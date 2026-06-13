@@ -1,0 +1,46 @@
+# ── Секреты и локальная конфигурация ─────────────────────────────────────
+# app/.env — MAX_BOT_TOKEN, KEYCLOAK_ADMIN_PASSWORD, DATABASE_URL и др.
+.env
+.env.*
+!.env.example
+
+# ── Node / frontend ───────────────────────────────────────────────────────
+node_modules/
+app/web/node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vite / TypeScript
+*.tsbuildinfo
+app/web/dist/assets/
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Docker / данные БД (локальные тома) ───────────────────────────────────
+# Тома создаются docker compose, в репозиторий не попадают.
+
+# ── IDE / ОС ──────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Логи и временные файлы ────────────────────────────────────────────────
+*.log
+*.tmp
+.cache/

@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход — MAX RASS</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --text: #111827;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --danger: #ef4444;
+      --max: #7c3aed;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(37, 99, 235, 0.12), transparent 40%),
+        radial-gradient(circle at 100% 100%, rgba(124, 58, 237, 0.08), transparent 35%),
+        var(--bg);
+    }
+
+    .shell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: 20px 16px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 400px;
+      padding: 36px 32px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--surface);
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+    }
+
+    .card-header {
+      margin-bottom: 28px;
+    }
+
+    .card-header h2 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .card-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font: inherit;
+      font-size: 15px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .field input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+
+    .field input.invalid {
+      border-color: var(--danger);
+    }
+
+    .error {
+      display: none;
+      margin: -8px 0 12px;
+      color: var(--danger);
+      font-size: 13px;
+    }
+
+    .error.visible { display: block; }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+
+    .row label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .row a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .row a:hover { text-decoration: underline; }
+
+    .btn {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 13px 18px;
+      border: 0;
+      border-radius: 11px;
+      font: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .btn:active { transform: scale(0.99); }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .btn-primary:hover { background: var(--primary-dark); }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-max {
+      background: #f5f3ff;
+      color: var(--max);
+      border: 1px solid #ddd6fe;
+    }
+
+    .btn-max:hover { background: #ede9fe; }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 22px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* MAX confirmation screen */
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .max-wait {
+      text-align: center;
+      padding: 12px 0;
+    }
+
+    .max-icon {
+      display: inline-grid;
+      width: 56px;
+      height: 56px;
+      place-items: center;
+      margin-bottom: 16px;
+      border-radius: 16px;
+      background: #f5f3ff;
+      color: var(--max);
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    .max-wait h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .max-wait p {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .timer {
+      display: inline-block;
+      margin-bottom: 20px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 8px;
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      background: none;
+      border: 0;
+      font-family: inherit;
+    }
+
+    .back-link:hover { text-decoration: underline; }
+
+    .spinner {
+      width: 28px;
+      height: 28px;
+      margin: 0 auto 16px;
+      border: 3px solid #e2e8f0;
+      border-top-color: var(--max);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 480px) {
+      .shell {
+        padding: 16px 12px;
+        align-items: flex-start;
+        padding-top: max(24px, env(safe-area-inset-top));
+        padding-bottom: max(24px, env(safe-area-inset-bottom));
+      }
+
+      .card {
+        padding: 28px 20px;
+        border-radius: 16px;
+        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
+      }
+
+      .card-header h2 {
+        font-size: 20px;
+      }
+
+      .field input {
+        padding: 14px;
+        font-size: 16px;
+      }
+
+      .row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .btn {
+        padding: 14px 18px;
+        min-height: 48px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+      <section class="card panel active" id="panelKeycloak" aria-label="Вход через Keycloak">
+        <div class="card-header">
+          <h2>Вход в систему</h2>
+          <p>Корпоративная учетная запись</p>
+        </div>
+
+        <form id="loginForm" novalidate>
+          <div class="field">
+            <label for="username">Логин или email</label>
+            <input id="username" name="username" type="text" autocomplete="username" placeholder="ivanov@company.ru" required>
+          </div>
+
+          <div class="field">
+            <label for="password">Пароль</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+          </div>
+
+          <p class="error" id="formError" role="alert"></p>
+
+          <div class="row">
+            <label><input type="checkbox" id="remember"> Запомнить меня</label>
+            <a href="#" id="forgotLink">Забыли пароль?</a>
+          </div>
+
+          <button class="btn btn-primary" type="submit" id="submitBtn">Войти</button>
+        </form>
+
+        <div class="divider">или</div>
+
+        <button class="btn btn-max" type="button" id="maxLoginBtn">Войти через MAX</button>
+      </section>
+
+      <!-- MAX passwordless confirmation -->
+      <section class="card panel" id="panelMax" aria-label="Подтверждение входа через MAX">
+        <div class="max-wait">
+          <div class="spinner" aria-hidden="true"></div>
+          <div class="max-icon">MAX</div>
+          <h3>Подтвердите вход</h3>
+          <p>Откройте MAX и нажмите «Подтвердить» в сообщении от бота.</p>
+          <span class="timer" id="timer">Осталось 5:00</span>
+          <button class="btn btn-primary" type="button" id="maxConfirmDemo">Подтвердить (демо)</button>
+          <br>
+          <button class="back-link" type="button" id="backToKeycloak">← Вернуться к входу</button>
+        </div>
+      </section>
+  </main>
+
+  <script>
+    /*
+     * Keycloak OIDC (production):
+     *
+     * const params = new URLSearchParams({
+     *   client_id: 'hr-web',           // или teacher-web
+     *   redirect_uri: 'https://app.example.com/callback',
+     *   response_type: 'code',
+     *   scope: 'openid profile email',
+     *   code_challenge: '<PKCE>',
+     *   code_challenge_method: 'S256',
+     * });
+     * window.location.href =
+     *   'https://auth.example.com/realms/max-education/protocol/openid-connect/auth?' + params;
+     *
+     * Форма логина/пароля в production рендерится Keycloak custom theme (login.ftl).
+     * Этот HTML — прототип внешнего вида темы max-rass.
+     */
+
+    const KEYCLOAK_AUTH_URL = 'https://auth.example.com/realms/max-education/protocol/openid-connect/auth';
+    const REDIRECT_URI = 'https://app.example.com/callback';
+    const CLIENT_ID = 'hr-web';
+
+    const panelKeycloak = document.getElementById('panelKeycloak');
+    const panelMax = document.getElementById('panelMax');
+    const loginForm = document.getElementById('loginForm');
+    const formError = document.getElementById('formError');
+    const submitBtn = document.getElementById('submitBtn');
+    const forgotLink = document.getElementById('forgotLink');
+    const maxLoginBtn = document.getElementById('maxLoginBtn');
+    const backToKeycloak = document.getElementById('backToKeycloak');
+    const maxConfirmDemo = document.getElementById('maxConfirmDemo');
+    const timerEl = document.getElementById('timer');
+
+    let timerInterval = null;
+    let secondsLeft = 300;
+
+    function showPanel(name) {
+      panelKeycloak.classList.toggle('active', name === 'keycloak');
+      panelMax.classList.toggle('active', name === 'max');
+    }
+
+    function buildKeycloakUrl() {
+      const params = new URLSearchParams({
+        client_id: CLIENT_ID,
+        redirect_uri: REDIRECT_URI,
+        response_type: 'code',
+        scope: 'openid profile email',
+      });
+      return KEYCLOAK_AUTH_URL + '?' + params.toString();
+    }
+
+    function redirectByRole(username) {
+      const lower = username.toLowerCase();
+      if (lower.includes('teacher') || lower.includes('prep') || lower.includes('prof')) {
+        window.location.href = 'teacher-dashboard.html';
+      } else {
+        window.location.href = 'hr-dashboard.html';
+      }
+    }
+
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      formError.classList.remove('visible');
+
+      const username = document.getElementById('username');
+      const password = document.getElementById('password');
+      username.classList.remove('invalid');
+      password.classList.remove('invalid');
+
+      if (!username.value.trim() || !password.value) {
+        formError.textContent = 'Введите логин и пароль';
+        formError.classList.add('visible');
+        if (!username.value.trim()) username.classList.add('invalid');
+        if (!password.value) password.classList.add('invalid');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Проверка…';
+
+      // Production: форма отправляется на Keycloak loginAction, не на ваш backend
+      setTimeout(() => {
+        redirectByRole(username.value.trim());
+      }, 600);
+    });
+
+    forgotLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      alert('Production: redirect на Keycloak reset-credentials\n' + buildKeycloakUrl().replace('/auth?', '/login-actions/reset-credentials?'));
+    });
+
+    function startTimer() {
+      clearInterval(timerInterval);
+      secondsLeft = 300;
+      timerInterval = setInterval(() => {
+        secondsLeft -= 1;
+        const m = Math.floor(secondsLeft / 60);
+        const s = String(secondsLeft % 60).padStart(2, '0');
+        timerEl.textContent = 'Осталось ' + m + ':' + s;
+        if (secondsLeft <= 0) {
+          clearInterval(timerInterval);
+          timerEl.textContent = 'Время истекло';
+        }
+      }, 1000);
+    }
+
+    maxLoginBtn.addEventListener('click', () => {
+      showPanel('max');
+      startTimer();
+      // Production: POST /api/v1/auth/max/start → session_id + deep link
+    });
+
+    backToKeycloak.addEventListener('click', () => {
+      clearInterval(timerInterval);
+      showPanel('keycloak');
+    });
+
+    maxConfirmDemo.addEventListener('click', () => {
+      maxConfirmDemo.disabled = true;
+      maxConfirmDemo.textContent = 'Вход…';
+      clearInterval(timerInterval);
+      setTimeout(() => {
+        window.location.href = 'hr-dashboard.html';
+      }, 500);
+    });
+  </script>
+</body>
+</html>

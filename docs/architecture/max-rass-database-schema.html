@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MAX RASS — единая схема БД</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --surface: #ffffff;
+      --text: #172033;
+      --muted: #64748b;
+      --border: #d8dee8;
+      --accent: #2457c5;
+      --soft: #eef3ff;
+      --code: #111827;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.6 "Segoe UI", Arial, sans-serif;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 32px 24px 56px; }
+    header, section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px;
+      margin-bottom: 18px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.06);
+    }
+    h1, h2, h3 { margin: 0 0 12px; line-height: 1.25; }
+    h1 { font-size: 30px; }
+    h2 { font-size: 23px; }
+    h3 { margin-top: 22px; font-size: 18px; }
+    p { margin: 0 0 14px; color: var(--muted); }
+    code {
+      background: #eef1f6;
+      border-radius: 5px;
+      padding: 1px 5px;
+      color: var(--code);
+      font-family: Consolas, "Courier New", monospace;
+    }
+    pre {
+      overflow-x: auto;
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+      font: 13px/1.5 Consolas, "Courier New", monospace;
+    }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 14px; }
+    th, td { border: 1px solid var(--border); padding: 9px 10px; text-align: left; vertical-align: top; }
+    th { background: #f0f3f8; }
+    .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .pill { border-radius: 999px; padding: 6px 10px; background: var(--soft); color: var(--accent); font-weight: 700; font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .card { border: 1px solid var(--border); border-radius: 14px; padding: 14px; background: #fbfcfe; }
+    .card strong { display: block; margin-bottom: 4px; }
+    .note { border-left: 4px solid var(--accent); background: var(--soft); border-radius: 10px; padding: 14px 16px; }
+    .mermaid { margin: 12px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>MAX RASS — единая схема базы данных</h1>
+    <p>Схема фиксирует пользователей, профили, группы, занятия, посещаемость, страйки и уведомления. Keycloak остаётся внешней системой авторизации, PostgreSQL хранит бизнес-данные приложения.</p>
+    <div class="meta">
+      <span class="pill">PostgreSQL</span>
+      <span class="pill">schema app</span>
+      <span class="pill">10 таблиц</span>
+      <span class="pill">Версия: 11.06.2026</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>1. ER-схема</h2>
+    <div class="mermaid">
+erDiagram
+    USERS ||--|| PROFILES : "user_id = id"
+    ROLES ||--o{ PROFILES : "role_id"
+    USERS ||--o| PROFILES : "id_curator"
+    GROUPS ||--o{ GROUP_MEMBERS : contains
+    USERS ||--o{ GROUP_MEMBERS : member
+    GROUPS ||--o| GROUPS : "id_parent"
+    USERS ||--o| GROUPS : "id_hr"
+    GROUPS ||--o{ LESSONS : "group_id"
+    USERS ||--o{ LESSONS : "teacher_id"
+    LESSONS ||--o{ LESSON_MEMBERS : "lesson_id"
+    USERS ||--o{ LESSON_MEMBERS : "user_id"
+    LESSON_MEMBERS ||--o| ATTENDANCE_MARKS : "user_id + lesson_id"
+    USERS ||--o{ ATTENDANCE_MARKS : "marked_by"
+    USERS ||--o{ STRIKES : "user_id"
+    LESSONS ||--o{ STRIKES : "lesson_id NULL"
+    USERS ||--o| STRIKES : "resolved_by NULL"
+    USERS ||--o{ NOTIFICATIONS : "delivered_to"
+    LESSONS ||--o{ NOTIFICATIONS : "lesson_id"
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Таблицы</h2>
+    <table>
+      <thead><tr><th>Таблица</th><th>Назначение</th><th>Ключевые поля</th></tr></thead>
+      <tbody>
+        <tr><td><code>users</code></td><td>Учётная запись приложения</td><td><code>id</code>, <code>keycloak_user_id</code>, <code>is_active</code></td></tr>
+        <tr><td><code>roles</code></td><td>Справочник ролей</td><td><code>code</code>, <code>name</code></td></tr>
+        <tr><td><code>profiles</code></td><td>Бизнес-профиль пользователя</td><td>ФИО, <code>role_id</code>, <code>phone</code>, <code>max_id</code>, <code>id_curator</code></td></tr>
+        <tr><td><code>groups</code></td><td>Иерархия групп и ответственный HR</td><td><code>id_parent</code>, <code>id_hr</code>, <code>status</code></td></tr>
+        <tr><td><code>group_members</code></td><td>Состав групп</td><td><code>group_id</code>, <code>user_id</code></td></tr>
+        <tr><td><code>lessons</code></td><td>Занятия: лекция или практика</td><td><code>group_id</code>, <code>teacher_id</code>, <code>starts_at</code>, <code>ends_at</code>, <code>lesson_type</code></td></tr>
+        <tr><td><code>lesson_members</code></td><td>Участники занятия</td><td><code>user_id</code>, <code>lesson_id</code></td></tr>
+        <tr><td><code>attendance_marks</code></td><td>Отметка посещаемости</td><td><code>present</code>, <code>absent</code>, <code>late</code>, <code>marked_by</code></td></tr>
+        <tr><td><code>strikes</code></td><td>Страйки и обжалования</td><td><code>user_id</code>, <code>lesson_id</code>, <code>reason</code>, <code>status</code></td></tr>
+        <tr><td><code>notifications</code></td><td>Факт доставки уведомления</td><td><code>delivered_to</code>, <code>lesson_id</code>, <code>kind</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>3. Бизнес-логика</h2>
+    <div class="grid">
+      <div class="card"><strong>Профиль</strong>Один <code>users</code> имеет один <code>profiles</code>. Куратор хранится в <code>profiles.id_curator</code>.</div>
+      <div class="card"><strong>Занятие</strong><code>lessons</code> содержит группу, преподавателя, дату/время, место и тип <code>lecture</code>/<code>practice</code>.</div>
+      <div class="card"><strong>Посещаемость</strong><code>lesson_members</code> задаёт состав, <code>attendance_marks</code> хранит одну отметку на участника занятия.</div>
+      <div class="card"><strong>Страйки</strong>Авто-страйк создаётся по <code>absent</code>/<code>late</code>; ручной страйк создаётся с текстовой причиной без обязательного занятия.</div>
+      <div class="card"><strong>Уведомления</strong>В БД хранится только <code>delivered_to</code>: пользователь с телефоном или куратор пользователя без телефона.</div>
+    </div>
+
+    <h3>Посещаемость и страйки</h3>
+    <div class="mermaid">
+flowchart LR
+    LM[lesson_members] --> AM[attendance_marks]
+    AM -->|present| OK[Без страйка]
+    AM -->|absent / late| S[strikes: active]
+    S --> AP[appealed]
+    AP -->|одобрено| R[revoked]
+    AP -->|отклонено| A[active]
+    </div>
+
+    <h3>Уведомления</h3>
+    <div class="mermaid">
+flowchart TD
+    E[Событие: 1 день / 3 часа / изменение] --> L[lesson_members]
+    L --> P{Есть phone?}
+    P -->|Да| U[delivered_to = user_id]
+    P -->|Нет| C[delivered_to = id_curator]
+    U --> N[notifications]
+    C --> N
+    </div>
+  </section>
+
+  <section>
+    <h2>4. DDL и реализация</h2>
+    <p>Рабочий SQL лежит в <code>app/max-auth/sql/001_app_schema.sql</code>. FastAPI применяет его на старте сервиса, поэтому схема создаётся автоматически после запуска docker compose.</p>
+    <pre>cd app
+docker compose up -d --build
+
+# Проверка API
+curl http://localhost:5173/api/v1/db/health
+curl http://localhost:5173/api/v1/db/tables</pre>
+    <div class="note">
+      Тестовая страница доступна по адресу <code>http://localhost:5173/db-test</code>. Она разрешает только read-only <code>SELECT</code>/<code>WITH</code> запросы.
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Статусы и типы</h2>
+    <table>
+      <thead><tr><th>Область</th><th>Значения</th></tr></thead>
+      <tbody>
+        <tr><td><code>attendance_status</code></td><td><code>present</code>, <code>absent</code>, <code>late</code></td></tr>
+        <tr><td><code>strike_status</code></td><td><code>active</code>, <code>appealed</code>, <code>revoked</code></td></tr>
+        <tr><td><code>notification_kind</code></td><td><code>lesson_reminder_1d</code>, <code>lesson_reminder_3h</code>, <code>lesson_changed</code></td></tr>
+        <tr><td><code>lesson_type</code></td><td><code>lecture</code>, <code>practice</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "default" });
+</script>
+</body>
+</html>

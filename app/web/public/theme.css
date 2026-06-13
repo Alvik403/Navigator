@@ -1,0 +1,47 @@
+/* MAX RASS — дизайн-токены */
+:root {
+  --bg: #f4f7fb;
+  --surface: #fff;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-soft: #eff6ff;
+  --text: #111827;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --max: #7c3aed;
+
+  --control-h: 38px;
+  --control-px: 14px;
+  --control-radius: 10px;
+  --control-font: 13px;
+  --control-min-w: 148px;
+
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.1);
+
+  --radius-card: 16px;
+  --radius-modal: 16px;
+
+  --focus-border: var(--primary);
+}
+
+* { box-sizing: border-box; }
+
+:where(button, input, select, textarea, a, .tab):focus,
+:where(button, input, select, textarea, a, .tab):focus-visible {
+  outline: none;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}

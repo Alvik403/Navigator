@@ -1,0 +1,22 @@
+/* MAX RASS — панель администратора */
+
+.direction-card .nested-section { margin-top: 10px; }
+.direction-card .nested-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #f8fafc;
+}
+.direction-card .nested-head span { color: var(--muted); font-weight: 400; }
+.direction-card .nested-body { padding: 8px 12px 12px; font-size: 13px; }
+
+.group-card {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.group-card.open .direction-chevron { transform: rotate(180deg); }

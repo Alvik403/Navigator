@@ -1,0 +1,37 @@
+/* MAX RASS — иконки на кнопках */
+
+.icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  vertical-align: -0.125em;
+}
+
+.btn .icon,
+.auth-btn .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.btn.icon-only,
+.modal-close {
+  padding: 0;
+  width: var(--control-h);
+  min-width: var(--control-h);
+}
+
+.modal-close .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.auth-btn .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.fs-add-btn .icon {
+  width: 12px;
+  height: 12px;
+}

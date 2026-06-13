@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HR — тест API — MAX RASS</title>
+  <link rel="stylesheet" href="/test-portal.css">
+  <script src="/auth-guard.js"></script>
+  <script src="/api-client.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div>
+        <h1>HR — тестовая панель</h1>
+        <p>Keycloak + REST API · <span class="badge">/api/v1/hr/*</span></p>
+      </div>
+      <div class="user">
+        <div class="avatar" id="testAvatar">—</div>
+        <div><span id="testUserName">—</span><br><span>HR</span></div>
+        <a class="logout" href="/logout">Выйти</a>
+        <a class="logout" href="/teacher-test.html" style="margin-left:8px">Преподаватель</a>
+      </div>
+    </header>
+
+    <section class="stats" id="stats"></section>
+
+    <div class="toolbar">
+      <button type="button" class="btn secondary" id="seedBtn">Загрузить demo-данные</button>
+      <button type="button" class="btn secondary" id="refreshBtn">Обновить всё</button>
+    </div>
+
+    <nav class="tabs" id="tabs">
+      <button type="button" class="tab active" data-tab="overview">Обзор</button>
+      <button type="button" class="tab" data-tab="users">Пользователи</button>
+      <button type="button" class="tab" data-tab="groups">Группы</button>
+      <button type="button" class="tab" data-tab="strikes">Страйки</button>
+      <button type="button" class="tab" data-tab="appeals">Апелляции</button>
+      <button type="button" class="tab" data-tab="reports">Отчёты</button>
+    </nav>
+
+    <section class="panel active" id="panel-overview">
+      <div class="card">
+        <h2>Сводка</h2>
+        <div id="overviewContent" class="empty">Загрузка…</div>
+        <pre class="api-log" id="logOverview"></pre>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-users">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Пользователи системы</h2>
+          <div class="toolbar">
+            <select id="filterUserRole">
+              <option value="">Все роли</option>
+              <option value="employee">Сотрудник</option>
+              <option value="teacher">Преподаватель</option>
+              <option value="curator">Куратор</option>
+              <option value="hr">HR</option>
+            </select>
+            <button type="button" class="btn secondary small" id="loadUsersBtn">GET /users</button>
+          </div>
+          <div id="usersTable"></div>
+        </div>
+        <div class="card">
+          <h2>Добавить пользователя</h2>
+          <form id="createUserForm">
+            <div class="field"><label>Фамилия</label><input id="cuLastName" required></div>
+            <div class="field"><label>Имя</label><input id="cuFirstName" required></div>
+            <div class="field"><label>Роль</label>
+              <select id="cuRole">
+                <option value="employee">Сотрудник</option>
+                <option value="teacher">Преподаватель</option>
+                <option value="curator">Куратор</option>
+                <option value="hr">HR</option>
+              </select>
+            </div>
+            <div class="field"><label>Телефон</label><input id="cuPhone" placeholder="+79001234567"></div>
+            <button type="submit" class="btn">POST /users</button>
+          </form>
+          <div class="toast" id="toastUsers"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-groups">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Рабочие группы</h2>
+          <button type="button" class="btn secondary small" id="loadGroupsBtn">GET /groups</button>
+          <div id="groupsList" style="margin-top:14px"></div>
+        </div>
+        <div class="card">
+          <h2>Создать / управление</h2>
+          <form id="createGroupForm">
+            <div class="field"><label>Название группы</label><input id="cgName" required placeholder="Backend-27"></div>
+            <div class="field"><label>HR (UUID, пусто = вы)</label><input id="cgHrId" placeholder="11111111-..."></div>
+            <button type="submit" class="btn">POST /groups</button>
+          </form>
+          <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
+          <form id="addMemberForm">
+            <div class="field"><label>ID группы</label><input id="amGroupId" required></div>
+            <div class="field"><label>ID пользователя</label><input id="amUserId" required></div>
+            <button type="submit" class="btn secondary">POST /groups/{id}/members</button>
+          </form>
+          <form id="assignHrForm" style="margin-top:12px">
+            <div class="field"><label>Назначить HR на группу</label>
+              <input id="ahGroupId" placeholder="group id" required>
+              <input id="ahHrId" placeholder="hr user id" required style="margin-top:8px">
+            </div>
+            <button type="submit" class="btn secondary">PATCH /groups/{id}</button>
+          </form>
+          <div class="toast" id="toastGroups"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-strikes">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Страйки</h2>
+          <button type="button" class="btn secondary small" id="loadStrikesBtn">GET /strikes</button>
+          <div id="strikesTable" style="margin-top:14px"></div>
+        </div>
+        <div class="card">
+          <h2>Выписать страйк</h2>
+          <form id="createStrikeForm">
+            <div class="field"><label>ID сотрудника</label><input id="csUserId" required></div>
+            <div class="field"><label>ID занятия (опц.)</label><input id="csLessonId"></div>
+            <div class="field"><label>Причина</label><input id="csReason" required placeholder="late / absent"></div>
+            <div class="field"><label>Номер (1–3)</label><input id="csNumber" type="number" min="1" max="3"></div>
+            <button type="submit" class="btn">POST /strikes</button>
+          </form>
+          <div class="toast" id="toastStrikes"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-appeals">
+      <div class="card">
+        <h2>Апелляции на страйки</h2>
+        <button type="button" class="btn secondary small" id="loadAppealsBtn">GET /appeals</button>
+        <div id="appealsTable" style="margin-top:14px"></div>
+        <div class="toast" id="toastAppeals"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-reports">
+      <div class="card">
+        <h2>Отчёты по посещаемости</h2>
+        <div class="toolbar">
+          <input id="reportGroupId" placeholder="Фильтр group_id (опц.)">
+          <button type="button" class="btn secondary" id="reportGroupsBtn">GET /reports/attendance/groups</button>
+          <button type="button" class="btn secondary" id="reportUsersBtn">GET /reports/attendance/users</button>
+        </div>
+        <div id="reportsContent"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+(function () {
+  "use strict";
+  var api = window.MaxRassApi;
+  var auth = window.MaxRassAuth;
+
+  auth.requireRoles(["hr_manager", "admin"], "/");
+  auth.applyUserToHeader();
+
+  var state = { users: [], groups: [], strikes: [], appeals: [] };
+
+  function log(elId, data) {
+    var el = document.getElementById(elId);
+    if (el) el.textContent = JSON.stringify(data, null, 2);
+  }
+
+  function renderStats(summary) {
+    document.getElementById("stats").innerHTML = [
+      ["Пользователи", summary.users_total],
+      ["Активные группы", summary.groups_active],
+      ["Активные страйки", summary.strikes_active],
+      ["Апелляции", summary.appeals_pending],
+      ["Занятия за 7 дн.", summary.lessons_week],
+    ].map(function (item) {
+      return '<div class="stat"><span>' + item[0] + '</span><strong>' + item[1] + '</strong></div>';
+    }).join("");
+  }
+
+  async function loadOverview() {
+    try {
+      var data = await api.get("/hr/reports/summary");
+      renderStats(data);
+      document.getElementById("overviewContent").innerHTML =
+        "<p>Сессия: <strong>" + (await api.get("/hr/me")).username + "</strong></p>";
+      log("logOverview", data);
+    } catch (err) {
+      api.showToast("toastUsers", err.message, true);
+    }
+  }
+
+  function renderUsers(items) {
+    if (!items.length) {
+      document.getElementById("usersTable").innerHTML = '<div class="empty">Нет пользователей</div>';
+      return;
+    }
+    document.getElementById("usersTable").innerHTML =
+      "<table><thead><tr><th>ФИО</th><th>Роль</th><th>Статус</th><th>ID</th><th></th></tr></thead><tbody>" +
+      items.map(function (u) {
+        return "<tr><td>" + api.escapeHtml(api.fmtName(u)) + "</td><td><span class=\"tag\">" + u.role_code +
+          "</span></td><td>" + u.status + "</td><td><code>" + u.id.slice(0, 8) + "…</code></td>" +
+          "<td><button class=\"btn small secondary\" data-promote=\"" + u.id + "\">→ teacher</button></td></tr>";
+      }).join("") + "</tbody></table>";
+
+    document.querySelectorAll("[data-promote]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        try {
+          await api.patch("/hr/users/" + btn.dataset.promote, { role_code: "teacher" });
+          api.showToast("toastUsers", "Роль обновлена");
+          loadUsers();
+        } catch (err) {
+          api.showToast("toastUsers", err.message, true);
+        }
+      });
+    });
+  }
+
+  async function loadUsers() {
+    var role = document.getElementById("filterUserRole").value;
+    var path = role ? "/hr/users?role=" + encodeURIComponent(role) : "/hr/users";
+    var data = await api.get(path);
+    state.users = data.items;
+    renderUsers(state.users);
+  }
+
+  function renderGroups(items) {
+    if (!items.length) {
+      document.getElementById("groupsList").innerHTML = '<div class="empty">Нет групп</div>';
+      return;
+    }
+    document.getElementById("groupsList").innerHTML = items.map(function (g) {
+      var members = (g.members || []).map(function (m) {
+        return api.fmtName(m) + " (" + m.role_code + ")";
+      }).join(", ") || "—";
+      return '<div class="card" style="padding:14px;margin-bottom:10px">' +
+        "<strong>" + api.escapeHtml(g.name) + "</strong> · " + g.status +
+        "<br><span style=\"color:var(--muted);font-size:13px\">HR: " + (g.hr_name || "—") +
+        " · участников: " + g.member_count + "</span>" +
+        "<div style=\"font-size:12px;margin-top:8px\">" + api.escapeHtml(members) + "</div>" +
+        "<code style=\"font-size:11px\">" + g.id + "</code></div>";
+    }).join("");
+  }
+
+  async function loadGroups() {
+    var data = await api.get("/hr/groups");
+    state.groups = data.items;
+    renderGroups(state.groups);
+  }
+
+  function strikeStatusTag(status) {
+    var cls = status === "active" ? "red" : status === "appealed" ? "yellow" : "green";
+    return '<span class="tag ' + cls + '">' + status + "</span>";
+  }
+
+  function renderStrikes(items, targetId) {
+    if (!items.length) {
+      document.getElementById(targetId).innerHTML = '<div class="empty">Нет записей</div>';
+      return;
+    }
+    document.getElementById(targetId).innerHTML =
+      "<table><thead><tr><th>Сотрудник</th><th>Причина</th><th>№</th><th>Статус</th><th>Группа</th><th></th></tr></thead><tbody>" +
+      items.map(function (s) {
+        var actions = "";
+        if (targetId === "appealsTable") {
+          actions = '<button class="btn small" data-approve="' + s.id + '">Одобрить</button> ' +
+            '<button class="btn small danger" data-reject="' + s.id + '">Отклонить</button>';
+        } else if (s.status === "active") {
+          actions = '<button class="btn small secondary" data-appeal="' + s.id + '">Апелляция (тест)</button>';
+        }
+        return "<tr><td>" + api.escapeHtml(api.fmtName(s)) + "</td><td>" + api.escapeHtml(s.reason) +
+          "</td><td>" + s.strike_number + "</td><td>" + strikeStatusTag(s.status) +
+          "</td><td>" + (s.group_name || "—") + "</td><td>" + actions + "</td></tr>";
+      }).join("") + "</tbody></table>";
+
+    if (targetId === "appealsTable") {
+      document.querySelectorAll("[data-approve]").forEach(function (btn) {
+        btn.addEventListener("click", function () { resolveAppeal(btn.dataset.approve, true); });
+      });
+      document.querySelectorAll("[data-reject]").forEach(function (btn) {
+        btn.addEventListener("click", function () { resolveAppeal(btn.dataset.reject, false); });
+      });
+    } else {
+      document.querySelectorAll("[data-appeal]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          var reason = prompt("Текст апелляции:", "Был уважительной причины");
+          if (!reason) return;
+          try {
+            await api.post("/hr/strikes/" + btn.dataset.appeal + "/appeal", { appeal_reason: reason });
+            api.showToast("toastStrikes", "Апелляция подана");
+            loadStrikes();
+            loadAppeals();
+          } catch (err) {
+            api.showToast("toastStrikes", err.message, true);
+          }
+        });
+      });
+    }
+  }
+
+  async function loadStrikes() {
+    var data = await api.get("/hr/strikes");
+    state.strikes = data.items;
+    renderStrikes(state.strikes, "strikesTable");
+  }
+
+  async function loadAppeals() {
+    var data = await api.get("/hr/appeals");
+    state.appeals = data.items;
+    renderStrikes(state.appeals, "appealsTable");
+  }
+
+  async function resolveAppeal(strikeId, approved) {
+    try {
+      await api.post("/hr/appeals/" + strikeId + "/resolve", { approved: approved });
+      api.showToast("toastAppeals", approved ? "Апелляция одобрена, страйк снят" : "Апелляция отклонена");
+      loadAppeals();
+      loadStrikes();
+      loadOverview();
+    } catch (err) {
+      api.showToast("toastAppeals", err.message, true);
+    }
+  }
+
+  async function loadReports(type) {
+    var groupId = document.getElementById("reportGroupId").value.trim();
+    var qs = groupId ? "?group_id=" + encodeURIComponent(groupId) : "";
+    var path = type === "groups" ? "/hr/reports/attendance/groups" : "/hr/reports/attendance/users";
+    var data = await api.get(path + qs);
+    var items = data.items;
+    if (!items.length) {
+      document.getElementById("reportsContent").innerHTML = '<div class="empty">Нет данных</div>';
+      return;
+    }
+    var headers = Object.keys(items[0]);
+    document.getElementById("reportsContent").innerHTML =
+      "<table><thead><tr>" + headers.map(function (h) { return "<th>" + h + "</th>"; }).join("") +
+      "</tr></thead><tbody>" + items.map(function (row) {
+        return "<tr>" + headers.map(function (h) { return "<td>" + (row[h] ?? "—") + "</td>"; }).join("") + "</tr>";
+      }).join("") + "</tbody></table>";
+  }
+
+  document.getElementById("tabs").addEventListener("click", function (e) {
+    var tab = e.target.closest(".tab");
+    if (!tab) return;
+    document.querySelectorAll(".tab").forEach(function (t) { t.classList.remove("active"); });
+    document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
+    tab.classList.add("active");
+    document.getElementById("panel-" + tab.dataset.tab).classList.add("active");
+  });
+
+  document.getElementById("seedBtn").addEventListener("click", async function () {
+    try {
+      await api.seedDemo();
+      api.showToast("toastUsers", "Demo-данные загружены");
+      loadOverview();
+      loadUsers();
+      loadGroups();
+    } catch (err) {
+      api.showToast("toastUsers", err.message, true);
+    }
+  });
+
+  document.getElementById("refreshBtn").addEventListener("click", function () {
+    loadOverview();
+    loadUsers();
+    loadGroups();
+    loadStrikes();
+    loadAppeals();
+  });
+
+  document.getElementById("loadUsersBtn").addEventListener("click", function () { loadUsers().catch(function (e) { api.showToast("toastUsers", e.message, true); }); });
+  document.getElementById("loadGroupsBtn").addEventListener("click", function () { loadGroups().catch(function (e) { api.showToast("toastGroups", e.message, true); }); });
+  document.getElementById("loadStrikesBtn").addEventListener("click", function () { loadStrikes().catch(function (e) { api.showToast("toastStrikes", e.message, true); }); });
+  document.getElementById("loadAppealsBtn").addEventListener("click", function () { loadAppeals().catch(function (e) { api.showToast("toastAppeals", e.message, true); }); });
+  document.getElementById("reportGroupsBtn").addEventListener("click", function () { loadReports("groups").catch(function (e) { api.showToast("toastUsers", e.message, true); }); });
+  document.getElementById("reportUsersBtn").addEventListener("click", function () { loadReports("users").catch(function (e) { api.showToast("toastUsers", e.message, true); }); });
+
+  document.getElementById("createUserForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      await api.post("/hr/users", {
+        last_name: document.getElementById("cuLastName").value.trim(),
+        first_name: document.getElementById("cuFirstName").value.trim(),
+        role_code: document.getElementById("cuRole").value,
+        phone: document.getElementById("cuPhone").value.trim() || null,
+      });
+      api.showToast("toastUsers", "Пользователь создан");
+      e.target.reset();
+      loadUsers();
+      loadOverview();
+    } catch (err) {
+      api.showToast("toastUsers", err.message, true);
+    }
+  });
+
+  document.getElementById("createGroupForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var body = { name: document.getElementById("cgName").value.trim() };
+      var hrId = document.getElementById("cgHrId").value.trim();
+      if (hrId) body.id_hr = hrId;
+      await api.post("/hr/groups", body);
+      api.showToast("toastGroups", "Группа создана");
+      e.target.reset();
+      loadGroups();
+      loadOverview();
+    } catch (err) {
+      api.showToast("toastGroups", err.message, true);
+    }
+  });
+
+  document.getElementById("addMemberForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var gid = document.getElementById("amGroupId").value.trim();
+      await api.post("/hr/groups/" + gid + "/members", {
+        user_id: document.getElementById("amUserId").value.trim(),
+      });
+      api.showToast("toastGroups", "Участник добавлен");
+      loadGroups();
+    } catch (err) {
+      api.showToast("toastGroups", err.message, true);
+    }
+  });
+
+  document.getElementById("assignHrForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var gid = document.getElementById("ahGroupId").value.trim();
+      await api.patch("/hr/groups/" + gid, { id_hr: document.getElementById("ahHrId").value.trim() });
+      api.showToast("toastGroups", "HR назначен");
+      loadGroups();
+    } catch (err) {
+      api.showToast("toastGroups", err.message, true);
+    }
+  });
+
+  document.getElementById("createStrikeForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var body = {
+        user_id: document.getElementById("csUserId").value.trim(),
+        reason: document.getElementById("csReason").value.trim(),
+      };
+      var lessonId = document.getElementById("csLessonId").value.trim();
+      var num = document.getElementById("csNumber").value;
+      if (lessonId) body.lesson_id = lessonId;
+      if (num) body.strike_number = parseInt(num, 10);
+      await api.post("/hr/strikes", body);
+      api.showToast("toastStrikes", "Страйк выписан");
+      e.target.reset();
+      loadStrikes();
+      loadOverview();
+    } catch (err) {
+      api.showToast("toastStrikes", err.message, true);
+    }
+  });
+
+  loadOverview();
+  loadUsers().catch(function () {});
+  loadGroups().catch(function () {});
+})();
+  </script>
+</body>
+</html>

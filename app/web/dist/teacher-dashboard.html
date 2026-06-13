@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Преподаватель — MAX RASS</title>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="icons.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="teacher-panel.css">
+  <link rel="stylesheet" href="ui-components.css">
+  <script src="/auth-guard.js"></script>
+  <script>window.MaxRassAuth.requireSystemRoles(["teacher", "admin"], "/");</script>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div><h1>Панель преподавателя</h1><p>Рабочие группы, расписание, посещаемость</p></div>
+      <div class="user">
+        <div class="avatar" id="teacherAvatar">—</div>
+        <div><span id="teacherName">—</span><br><span>Преподаватель</span></div>
+        <a class="logout" href="/logout">Выйти</a>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button type="button" class="tab active" data-tab="home">Главная</button>
+      <button type="button" class="tab" data-tab="schedule">Расписание</button>
+      <button type="button" class="tab" data-tab="groups">Группы</button>
+      <button type="button" class="tab" data-tab="report">Отчёт</button>
+    </nav>
+
+    <section class="panel active" id="panel-home">
+      <div class="next" id="nextLesson"></div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="day-nav">
+            <button type="button" class="btn secondary small icon-only" id="prevHomeDay" aria-label="Предыдущий день" data-icon="chevron-left" data-icon-pos="only"></button>
+            <div class="home-day-picker-anchor">
+              <button type="button" class="home-day-pick-btn" id="homeDayPickBtn" aria-label="Выбрать день">
+                <span class="ui-icon-cal" aria-hidden="true"></span>
+                <span id="homeDayLabel">—</span>
+              </button>
+              <div id="homeDayPickerMount"></div>
+            </div>
+            <button type="button" class="btn secondary small icon-only" id="nextHomeDay" aria-label="Следующий день" data-icon="chevron-right" data-icon-pos="only"></button>
+          </div>
+          <div id="homeSchedule"></div>
+        </div>
+        <div class="card">
+          <h2 id="attendanceTitle"><span id="attendanceTitleText">Отметка участников</span></h2>
+          <p class="hint">Выберите занятие. Отметки можно редактировать в любое время.</p>
+          <div id="attendanceList"></div>
+          <div class="footer">
+            <span id="saveStatus">Выберите занятие</span>
+            <span id="attendanceSummary"></span>
+            <button type="button" class="btn secondary small" id="historyBtn" disabled data-icon="clock">История</button>
+            <button type="button" class="btn" id="saveBtn" disabled data-icon="check">Сохранить</button>
+          </div>
+          <div class="toast" id="toast"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-schedule">
+      <div class="card">
+        <div class="toolbar schedule-toolbar">
+          <div class="toolbar-item" id="rangeFromWrap"></div>
+          <div class="toolbar-item" id="rangeToWrap"></div>
+          <div class="schedule-filter" id="scheduleFilter">
+            <button type="button" class="schedule-filter-btn active" data-sfilter="all">Все</button>
+            <button type="button" class="schedule-filter-btn" data-sfilter="mine">Мои</button>
+            <button type="button" class="schedule-filter-btn" data-sfilter="conflicts">Конфликты</button>
+          </div>
+          <div class="toolbar-actions">
+            <button type="button" class="btn" id="addLessonBtn" data-icon="plus">Назначить занятие</button>
+          </div>
+        </div>
+        <div class="cal-wrap" id="calWrap"></div>
+        <p class="hint" style="margin-top:12px">Временная сетка 08:00–20:00. Свои занятия — синие, конфликты — красная рамка. Клик по своему занятию — редактирование.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-groups">
+      <div class="card">
+        <h2 id="groupsPanelTitle">Мои рабочие группы (<span id="groupCount">0</span>)</h2>
+        <div class="group-list" id="groupsList"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-report">
+      <div class="toolbar" style="margin-bottom:16px">
+        <button type="button" class="btn secondary" id="exportReportBtn" data-icon="download">Выгрузить Excel</button>
+      </div>
+      <div class="stats" id="reportStats"></div>
+      <div class="grid-2">
+        <div class="card">
+          <h2>Статистика по занятиям</h2>
+          <div id="lessonStatsTable"></div>
+        </div>
+        <div class="card">
+          <h2>Статистика по ученикам</h2>
+          <div id="reportGroupFilterWrap" style="margin-bottom:14px"></div>
+          <div id="studentStatsTable"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>История изменений отметок</h2>
+        <div id="markHistoryTable"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="overlay" id="lessonModal">
+    <div class="modal narrow">
+      <div class="modal-header">
+        <div><h3 id="modalTitle">Назначить занятие</h3></div>
+        <button type="button" class="modal-close" id="lessonModalClose" aria-label="Закрыть" data-icon="x" data-icon-pos="only"></button>
+      </div>
+      <form id="lessonForm" class="modal-form">
+        <div class="modal-scroll">
+          <input type="hidden" id="editLessonId" value="">
+          <div id="fieldLessonGroup"></div>
+          <div id="fieldLessonDate"></div>
+          <div class="modal-grid-2">
+            <div id="fieldLessonTime"></div>
+            <div id="fieldLessonTimeEnd"></div>
+          </div>
+          <div class="field">
+            <label for="lessonPlace">Место (здание, каб.)</label>
+            <input class="input" id="lessonPlace" required placeholder="Корпус А, каб. 212">
+          </div>
+          <div id="fieldLessonType"></div>
+          <div class="field">
+            <label for="lessonTitle">Тема</label>
+            <input class="input" id="lessonTitle" placeholder="REST API">
+          </div>
+          <div class="field" id="subgroupField" style="display:none">
+            <label>Подгруппа <span class="field-hint">(только для практики)</span></label>
+            <div class="subgroup-list" id="subgroupList"></div>
+          </div>
+          <div id="adjacentLessons"></div>
+          <div id="conflictWarnings"></div>
+        </div>
+        <div class="modal-footer modal-footer-between">
+          <button type="button" class="btn danger" id="deleteLessonBtn" style="display:none" data-icon="trash">Удалить</button>
+          <div class="modal-footer-actions">
+            <button type="button" class="btn secondary" id="cancelModal" data-icon="x">Отмена</button>
+            <button type="submit" class="btn" id="saveLessonBtn" data-icon="check">Сохранить</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="overlay" id="historyModal">
+    <div class="modal narrow">
+      <div class="modal-header">
+        <div><h3>История отметок</h3><p id="historyModalSubtitle">Изменения по выбранному занятию</p></div>
+        <button type="button" class="modal-close" id="historyModalClose" aria-label="Закрыть" data-icon="x" data-icon-pos="only"></button>
+      </div>
+      <div class="modal-scroll" id="historyModalBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn secondary" id="historyModalOk" data-icon="x">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/auth-guard.js"></script>
+  <script src="/api-client.js"></script>
+  <script src="teacher-api.js"></script>
+  <script src="teacher-schedule.js"></script>
+  <script src="icons.js"></script>
+  <script src="ui-components.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+(async function () {
+  "use strict";
+  let D;
+  try {
+    D = await TeacherApi.bootstrap();
+  } catch (err) {
+    if (window.MaxRassAuth && MaxRassAuth.isAuthErrorMessage(err && err.message)) {
+      MaxRassAuth.redirectToLogin("/teacher-dashboard.html");
+      return;
+    }
+    document.body.innerHTML = "<div style='padding:40px;font-family:sans-serif'><h2>Ошибка загрузки</h2><p>" + (err.message || err) + "</p><p>Убедитесь, что запущены docker compose (Keycloak + max-auth на порту 8025).</p><p><a href='/'>На главную</a></p></div>";
+    return;
+  }
+
+  async function reloadData() {
+    D = await TeacherApi.refresh();
+    refreshMyLessons();
+  }
+
+  const I = (n) => ICONS.icon(n);
+  const teacher = D.userById(D.session.teacherId);
+  const myGroups = D.allWorkingGroups().length ? D.allWorkingGroups() : D.groups.filter(g => g.id_parent);
+
+  let myLessons = [];
+  const attendance = {};
+  const savedLessons = new Set();
+  let selectedLessonId = null;
+  let homeDay = startOfDay(new Date());
+  let rangeFrom = getMonday(new Date());
+  let rangeTo = addDays(getMonday(new Date()), 6);
+  let scheduleFilter = "all";
+
+  let cmpGroup, cmpDate, cmpTime, cmpTimeEnd, cmpType;
+  let cmpRangeFrom, cmpRangeTo, cmpReportGroup;
+
+  function startOfDay(d) {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  }
+  function getMonday(d) {
+    const x = startOfDay(d);
+    const day = x.getDay();
+    x.setDate(x.getDate() - ((day + 6) % 7));
+    return x;
+  }
+  function addDays(d, n) {
+    const x = new Date(d);
+    x.setDate(x.getDate() + n);
+    return x;
+  }
+  function dateStr(d) { return UI.toDateStr(d); }
+  function lessonOnDate(l, ds) {
+    if (l.date === ds) return true;
+    return dateStr(new Date(l.startsAt)) === ds;
+  }
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+  }
+  function lessonById(id) { return D.lessons.find(l => l.id === id); }
+  function groupById(id) { return D.groups.find(g => g.id === id); }
+  function teacherName(id) { return D.fullName(D.userById(id)); }
+  function isMyLesson(l) { return l.id_teacher === teacher.id; }
+  function myMarks() {
+    const ids = new Set(myLessons.map(l => l.id));
+    return D.marks.filter(m => ids.has(m.id_lesson));
+  }
+
+  function lessonStudents(lesson) {
+    if (lesson.studentIds?.length) return lesson.studentIds.map(id => D.userById(id)).filter(Boolean);
+    return D.groupStudents(lesson.id_group);
+  }
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function scheduleCtx() {
+    return {
+      teacherId: teacher.id,
+      fullName: function (u) { return D.fullName(u); },
+      userById: function (id) { return D.userById(id); },
+      groupById: groupById,
+      lessonStudents: lessonStudents,
+      groupStudents: function (gid) { return D.groupStudents(gid); },
+    };
+  }
+  function refreshMyLessons() {
+    myLessons = (D.myLessons || D.lessons.filter(l => isMyLesson(l)))
+      .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+    applyAutoComplete();
+  }
+  function applyAutoComplete() {
+    const sorted = [...myLessons].sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+    const now = new Date();
+    sorted.forEach((l, i) => {
+      const start = new Date(l.startsAt);
+      const end = new Date(l.endsAt);
+      const next = sorted[i + 1];
+      if (next && now >= new Date(next.startsAt)) l.status = "done";
+      else if (now >= start && now < end) l.status = "now";
+      else if (now < start && start.toDateString() === now.toDateString()) l.status = "soon";
+      else if (now >= end) l.status = "done";
+      else l.status = "planned";
+    });
+  }
+  function statusTag(s) {
+    return { done: ["green", "проведено"], now: ["orange", "идёт"], soon: ["orange", "скоро"], planned: ["gray", "план"] }[s] || ["gray", "—"];
+  }
+  function showToast(msg, isError) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.className = "toast show" + (isError ? " error" : "");
+    setTimeout(() => t.classList.remove("show"), 3500);
+  }
+  function daysBetween(from, to) {
+    const days = [];
+    const cur = startOfDay(from);
+    const end = startOfDay(to);
+    while (cur <= end) {
+      days.push(new Date(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    return days;
+  }
+
+  function validateLesson(data, excludeId) {
+    return TeacherSchedule.validateDraft(data, D.lessons, excludeId, scheduleCtx());
+  }
+  function initAttendance(lessonId) {
+    const l = lessonById(lessonId);
+    if (!l || !isMyLesson(l)) return;
+    attendance[lessonId] = {};
+    lessonStudents(l).forEach(u => {
+      const existing = D.marks.find(m => m.id_lesson === lessonId && m.id_user === u.id);
+      attendance[lessonId][u.id] = existing ? existing.mark : "present";
+    });
+    if (D.marks.some(m => m.id_lesson === lessonId)) savedLessons.add(lessonId);
+  }
+
+  async function loadAttendanceForLesson(lessonId) {
+    const l = lessonById(lessonId);
+    if (!l || !isMyLesson(l)) return;
+    try {
+      const rows = await TeacherApi.loadLessonAttendance(lessonId);
+      attendance[lessonId] = {};
+      lessonStudents(l).forEach(u => {
+        const row = rows.find(r => r.user_id === u.id);
+        attendance[lessonId][u.id] = row && row.attendance_status ? row.attendance_status : "present";
+      });
+      if (rows.some(r => r.attendance_status)) savedLessons.add(lessonId);
+    } catch (err) {
+      initAttendance(lessonId);
+    }
+  }
+
+  function renderNext() {
+    applyAutoComplete();
+    const upcoming = myLessons.filter(l => new Date(l.endsAt) >= new Date()).sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0];
+    const el = document.getElementById("nextLesson");
+    if (!upcoming) { el.innerHTML = `<span class="next-label">Ближайшее занятие</span><h2>Нет запланированных занятий</h2>`; return; }
+    const g = groupById(upcoming.id_group);
+    el.innerHTML = `<span class="next-label">Ближайшее занятие · ${D.lessonTypeLabel[upcoming.type]}</span>
+      <h2>${g.name}: ${upcoming.title}</h2>
+      <p>${upcoming.place} · ${lessonStudents(upcoming).length} учеников</p>
+      <span class="next-time">${fmtDate(upcoming.startsAt)}, ${upcoming.time} – ${upcoming.timeEnd}</span>`;
+  }
+
+  let cmpHomeDay;
+
+  function updateHomeDayLabel() {
+    const label = homeDay.toLocaleDateString("ru-RU", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+    const el = document.getElementById("homeDayLabel");
+    if (el) el.textContent = label;
+    cmpHomeDay?.setValue(dateStr(homeDay));
+  }
+
+  function setupHomeDayPicker() {
+    const mount = document.getElementById("homeDayPickerMount");
+    if (!mount) return;
+    cmpHomeDay = UI.createDatePicker(mount, {
+      label: "",
+      value: dateStr(homeDay),
+      onChange: (v) => {
+        homeDay = startOfDay(UI.parseDateStr(v));
+        updateHomeDayLabel();
+        renderHomeSchedule();
+      },
+    });
+    const trigger = mount.querySelector(".ui-trigger");
+    if (trigger) trigger.style.display = "none";
+    document.getElementById("homeDayPickBtn")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const hiddenTrigger = mount.querySelector(".ui-trigger");
+      if (hiddenTrigger) hiddenTrigger.click();
+    });
+    updateHomeDayLabel();
+  }
+
+  function renderHomeSchedule() {
+    applyAutoComplete();
+    const ds = dateStr(homeDay);
+    const today = startOfDay(new Date());
+    updateHomeDayLabel();
+    document.getElementById("nextHomeDay").disabled = homeDay >= today;
+
+    const list = myLessons.filter(l => lessonOnDate(l, ds));
+    const el = document.getElementById("homeSchedule");
+    if (!list.length) {
+      el.innerHTML = `<div class="empty">Занятий в этот день нет</div>`;
+      if (selectedLessonId && !lessonOnDate(lessonById(selectedLessonId), ds)) {
+        selectedLessonId = null;
+        renderAttendance();
+      }
+      return;
+    }
+    el.innerHTML = list.map(l => {
+      const g = groupById(l.id_group);
+      const [cls, lbl] = statusTag(l.status);
+      return `<article class="schedule-item ${selectedLessonId === l.id ? "selected" : ""}" data-lesson="${l.id}">
+        <span class="time">${l.time}</span>
+        <div><strong>${l.title}</strong><span>${g.name} · ${l.place} · ${D.lessonTypeLabel[l.type]}</span></div>
+        <span class="tag ${cls}">${lbl}</span>
+      </article>`;
+    }).join("");
+    el.querySelectorAll("[data-lesson]").forEach(row => row.onclick = () => selectLesson(row.dataset.lesson));
+    if (selectedLessonId && !list.some(l => l.id === selectedLessonId)) {
+      selectLesson(list.find(l => l.status === "now" || l.status === "soon")?.id || list[0].id);
+    } else if (!selectedLessonId && list.length) {
+      selectLesson(list.find(l => l.status === "now" || l.status === "soon")?.id || list[0].id);
+    }
+  }
+
+  async function selectLesson(lessonId) {
+    selectedLessonId = lessonId;
+    await loadAttendanceForLesson(lessonId);
+    const l = lessonById(lessonId);
+    document.getElementById("attendanceTitleText").textContent = `Отметка · ${groupById(l.id_group)?.name || "—"}`;
+    document.getElementById("historyBtn").disabled = false;
+    renderHomeSchedule();
+    renderAttendance();
+  }
+
+  function renderAttendance() {
+    const el = document.getElementById("attendanceList");
+    const saveBtn = document.getElementById("saveBtn");
+    if (!selectedLessonId) {
+      el.innerHTML = `<div class="empty">Выберите занятие</div>`;
+      saveBtn.disabled = true;
+      return;
+    }
+    saveBtn.disabled = false;
+    const l = lessonById(selectedLessonId);
+    el.innerHTML = lessonStudents(l).map(u => {
+      const st = attendance[selectedLessonId][u.id] || "present";
+      return `<article class="student" data-user="${u.id}">
+        <div><strong>${D.fullName(u)}</strong><br><span>${u.phone || "без телефона"} · куратор: ${D.fullName(D.userById(u.id_curator))}</span></div>
+        <div class="status-group">
+          <button type="button" class="status ${st === "present" ? "active" : ""}" data-status="present">Был</button>
+          <button type="button" class="status ${st === "late" ? "active" : ""}" data-status="late">Опоздал</button>
+          <button type="button" class="status ${st === "absent" ? "active" : ""}" data-status="absent">Не был</button>
+        </div>
+      </article>`;
+    }).join("");
+    el.querySelectorAll(".status").forEach(btn => {
+      btn.onclick = () => {
+        const row = btn.closest(".student");
+        const uid = row.dataset.user;
+        row.querySelectorAll(".status").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        attendance[selectedLessonId][uid] = btn.dataset.status;
+        savedLessons.delete(selectedLessonId);
+        updateSummary();
+        document.getElementById("saveStatus").textContent = "Не сохранено";
+      };
+    });
+    updateSummary();
+    document.getElementById("saveStatus").textContent = savedLessons.has(selectedLessonId) ? "Сохранено" : "Не сохранено";
+  }
+
+  function updateSummary() {
+    if (!selectedLessonId) return;
+    const rec = attendance[selectedLessonId];
+    const total = Object.keys(rec).length;
+    const ok = Object.values(rec).filter(s => s === "present" || s === "late").length;
+    document.getElementById("attendanceSummary").textContent = `Присутствуют: ${ok} из ${total}`;
+  }
+
+  function renderCalendar() {
+    const TS = TeacherSchedule;
+    const ctx = scheduleCtx();
+    const days = daysBetween(rangeFrom, rangeTo);
+    const wrap = document.getElementById("calWrap");
+    if (!days.length) {
+      wrap.innerHTML = `<div class="empty">Выберите корректный период</div>`;
+      return;
+    }
+    const todayStr = dateStr(new Date());
+    const rangeLessons = D.lessons.filter(l => {
+      const d = UI.parseDateStr(TS.lessonDateStr(l));
+      return d >= startOfDay(rangeFrom) && d <= startOfDay(rangeTo);
+    });
+    const visible = TS.filterByScheduleMode(rangeLessons, scheduleFilter, teacher.id, ctx);
+    const totalH = TS.totalHeightPx(TS.CAL_DAY_START, TS.CAL_DAY_END, TS.PX_PER_MIN);
+    const hours = TS.hourMarkers(TS.CAL_DAY_START, TS.CAL_DAY_END);
+
+    const daysHead = days.map(d => {
+      const ds = dateStr(d);
+      return `<div class="cal-day-head ${ds === todayStr ? "today" : ""}">
+        ${d.toLocaleDateString("ru-RU", { weekday: "short" })}<br>${d.getDate()}
+      </div>`;
+    }).join("");
+
+    const timesCol = hours.map(h =>
+      `<div class="cal-hour-label" style="top:${h.top}px">${h.label}</div>`
+    ).join("");
+
+    const daysCol = days.map(d => {
+      const ds = dateStr(d);
+      const dayLessons = visible.filter(l => TS.lessonDateStr(l) === ds);
+      const blocks = TS.layoutDayLessons(dayLessons, TS.CAL_DAY_START, TS.PX_PER_MIN);
+      const hourLines = hours.map(h =>
+        `<div class="cal-hour-line" style="top:${h.top}px"></div>`
+      ).join("");
+      const blocksHtml = blocks.map(b => {
+        const l = b.lesson;
+        const mine = isMyLesson(l);
+        const conflicts = TS.detectConflicts(l, rangeLessons, ctx);
+        const conflictCls = conflicts.hasConflict ? " conflict" : "";
+        const roleCls = mine ? " mine" : " other";
+        const g = groupById(l.id_group);
+        const teacherLabel = mine ? "вы" : teacherName(l.id_teacher);
+        const tip = conflicts.reasons.join("; ");
+        return `<div class="cal-lesson-block${roleCls}${conflictCls}" data-lesson="${l.id}" data-mine="${mine}"` +
+          ` style="top:${b.top}px;height:${b.height}px;left:calc(${b.leftPct}% + 2px);width:calc(${b.widthPct}% - 4px)"` +
+          (tip ? ` title="${escapeHtml(tip)}"` : "") + ">" +
+          (conflicts.hasConflict ? '<span class="cal-conflict-badge" aria-hidden="true">!</span>' : "") +
+          `<strong>${escapeHtml(l.title)}</strong>` +
+          `<span class="cal-block-meta">${l.time}–${l.timeEnd}</span>` +
+          `<span class="cal-block-meta">${escapeHtml(g?.name || "—")} · ${escapeHtml(teacherLabel)}</span>` +
+          (l.place ? `<span class="cal-block-meta">${escapeHtml(l.place)}</span>` : "") +
+          "</div>";
+      }).join("");
+      return `<div class="cal-day-col" style="height:${totalH}px">${hourLines}${blocksHtml}</div>`;
+    }).join("");
+
+    const emptyMsg = !rangeLessons.length
+      ? "В выбранном периоде нет занятий"
+      : !visible.length
+        ? (scheduleFilter === "mine" ? "Нет ваших занятий в этом периоде" : "Нет конфликтов в этом периоде")
+        : "";
+
+    wrap.innerHTML = `
+      <div class="cal-header"><div class="cal-gutter"></div><div class="cal-days-head">${daysHead}</div></div>
+      <div class="cal-body cal-body-grid">
+        <div class="cal-times-fixed" style="height:${totalH}px">${timesCol}</div>
+        <div class="cal-days-scroll">
+          <div class="cal-days">${daysCol}</div>
+          ${emptyMsg ? `<div class="cal-empty-overlay">${emptyMsg}</div>` : ""}
+        </div>
+      </div>`;
+
+    wrap.querySelectorAll(".cal-lesson-block.mine").forEach(el => {
+      el.onclick = () => openLessonModal(el.dataset.lesson);
+    });
+  }
+
+  function renderSubgroupList(groupId, selectedIds) {
+    const sel = new Set(selectedIds || []);
+    document.getElementById("subgroupList").innerHTML = D.groupStudents(groupId).map(u => `
+      <label class="subgroup-item"><input type="checkbox" value="${u.id}" ${sel.has(u.id) ? "checked" : ""}>${D.fullName(u)}</label>`).join("");
+  }
+
+  function buildLessonFromForm() {
+    const date = cmpDate.getValue();
+    const time = cmpTime.getValue();
+    const timeEnd = cmpTimeEnd.getValue();
+    const [h, m] = time.split(":").map(Number);
+    const [eh, em] = timeEnd.split(":").map(Number);
+    const starts = new Date(date + "T00:00:00");
+    starts.setHours(h, m, 0, 0);
+    const ends = new Date(date + "T00:00:00");
+    ends.setHours(eh, em, 0, 0);
+    const type = cmpType.getValue();
+    const gid = cmpGroup.getValue();
+    let studentIds = null;
+    if (type === "practice") {
+      const checked = [...document.querySelectorAll("#subgroupList input:checked")].map(cb => cb.value);
+      if (checked.length && checked.length < D.groupStudents(gid).length) studentIds = checked;
+    }
+    return {
+      id_group: gid, date, time, timeEnd,
+      place: document.getElementById("lessonPlace").value.trim(),
+      type, title: document.getElementById("lessonTitle").value.trim() || "Занятие",
+      startsAt: starts.toISOString(), endsAt: ends.toISOString(), studentIds
+    };
+  }
+
+  function buildApiLessonPayload(data) {
+    return {
+      group_id: data.id_group,
+      starts_at: data.startsAt,
+      ends_at: data.endsAt,
+      place: data.place,
+      lesson_type: data.type,
+      title: data.title,
+      member_ids: data.studentIds,
+    };
+  }
+
+  function updateModalPreview() {
+    const data = buildLessonFromForm();
+    const excludeId = document.getElementById("editLessonId").value || null;
+    const adjacent = TeacherSchedule.adjacentWithConflicts(data, D.lessons, excludeId, scheduleCtx());
+    document.getElementById("adjacentLessons").innerHTML = adjacent.length
+      ? `<div class="adjacent-box"><strong>Смежные занятия</strong><ul>${adjacent.map(a => {
+        const hint = a.reasons.length ? ` <em class="adj-conflict-hint">(${a.reasons.join("; ")})</em>` : "";
+        return `<li>${a.lesson.time}–${a.lesson.timeEnd} · ${teacherName(a.lesson.id_teacher)} · ${groupById(a.lesson.id_group)?.name}${hint}</li>`;
+      }).join("")}</ul></div>`
+      : `<div class="adjacent-box"><strong>Смежные занятия</strong><p style="margin:6px 0 0;color:var(--muted)">Других занятий в это время нет</p></div>`;
+    const errors = validateLesson(data, excludeId);
+    document.getElementById("conflictWarnings").innerHTML = errors.length
+      ? `<div class="conflict-box error"><strong>Конфликты</strong><ul>${errors.map(e => `<li>${e}</li>`).join("")}</ul></div>` : "";
+    document.getElementById("saveLessonBtn").disabled = errors.length > 0;
+  }
+
+  function openLessonModal(lessonId) {
+    const isEdit = !!lessonId;
+    document.getElementById("modalTitle").textContent = isEdit ? "Корректировка занятия" : "Назначить занятие";
+    document.getElementById("editLessonId").value = isEdit ? lessonId : "";
+    document.getElementById("deleteLessonBtn").style.display = isEdit ? "inline-block" : "none";
+    cmpGroup.setOptions(myGroups.map(g => ({ value: g.id, label: g.name })));
+
+    if (isEdit) {
+      const l = lessonById(lessonId);
+      cmpGroup.setValue(String(l.id_group));
+      cmpDate.setValue(l.date);
+      cmpTime.setValue(l.time);
+      cmpTimeEnd.setValue(l.timeEnd);
+      document.getElementById("lessonPlace").value = l.place;
+      cmpType.setValue(l.type);
+      document.getElementById("lessonTitle").value = l.title;
+      renderSubgroupList(l.id_group, l.studentIds);
+    } else {
+      cmpGroup.setValue(String(myGroups[0]?.id || ""));
+      cmpDate.setValue(dateStr(new Date()));
+      cmpTime.setValue("10:30");
+      cmpTimeEnd.setValue("11:30");
+      document.getElementById("lessonPlace").value = "";
+      cmpType.setValue("lecture");
+      document.getElementById("lessonTitle").value = "";
+      renderSubgroupList(myGroups[0]?.id, []);
+    }
+    toggleSubgroupField();
+    updateModalPreview();
+    document.getElementById("lessonModal").classList.add("open");
+  }
+
+  function closeLessonModal() { document.getElementById("lessonModal").classList.remove("open"); }
+
+  function toggleSubgroupField() {
+    const show = cmpType.getValue() === "practice";
+    document.getElementById("subgroupField").style.display = show ? "block" : "none";
+    if (show) renderSubgroupList(cmpGroup.getValue(), [...document.querySelectorAll("#subgroupList input:checked")].map(cb => cb.value));
+  }
+
+  async function saveLesson(e) {
+    e.preventDefault();
+    const data = buildLessonFromForm();
+    const excludeId = document.getElementById("editLessonId").value || null;
+    if (validateLesson(data, excludeId).length) return;
+    const payload = buildApiLessonPayload(data);
+    const btn = document.getElementById("saveLessonBtn");
+    btn.disabled = true;
+    try {
+      if (excludeId) {
+        await TeacherApi.updateLesson(excludeId, payload);
+        showToast("Занятие обновлено");
+      } else {
+        await TeacherApi.createLesson(payload);
+        showToast("Занятие добавлено");
+      }
+      D = await TeacherApi.refresh();
+      refreshMyLessons();
+      ensureLessonInRange(data.date);
+      closeLessonModal();
+      renderNext();
+      if (await reloadCalendar()) renderCalendar();
+      renderHomeSchedule();
+      renderGroups();
+    } catch (err) {
+      showToast(err.message || "Ошибка сохранения", true);
+    } finally {
+      btn.disabled = false;
+      updateModalPreview();
+    }
+  }
+
+  async function deleteLesson() {
+    const id = document.getElementById("editLessonId").value;
+    if (!id || !confirm("Удалить занятие?")) return;
+    try {
+      await TeacherApi.deleteLesson(id);
+      D = await TeacherApi.refresh();
+      refreshMyLessons();
+      closeLessonModal();
+      renderNext();
+      if (await reloadCalendar()) renderCalendar();
+      renderHomeSchedule();
+      renderGroups();
+      showToast("Занятие удалено");
+    } catch (err) {
+      showToast(err.message || "Ошибка удаления", true);
+    }
+  }
+
+  function studentInitials(u) {
+    return (u.firstName[0] + u.lastName[0]).toUpperCase();
+  }
+
+  function renderGroups() {
+    document.getElementById("groupCount").textContent = myGroups.length;
+    document.getElementById("groupsList").innerHTML = myGroups.map(g => {
+      const course = D.courseOfGroup(g.id);
+      const students = D.groupStudents(g.id);
+      const lessons = myLessons.filter(l => l.id_group === g.id);
+      const done = lessons.filter(l => l.status === "done");
+      const pct = lessons.length ? Math.round(done.length / lessons.length * 100) : 0;
+      const studentsTable = students.length ? `<table class="group-table">
+        <thead><tr><th>Ученик</th><th>Телефон</th><th>Куратор</th></tr></thead>
+        <tbody>${students.map(u => `<tr>
+          <td><div class="student-cell"><span class="student-avatar">${studentInitials(u)}</span>${D.fullName(u)}</div></td>
+          <td>${u.phone || "—"}</td>
+          <td>${D.fullName(D.userById(u.id_curator))}</td>
+        </tr>`).join("")}</tbody>
+      </table>` : `<div class="nested-empty">Нет учеников в группе</div>`;
+      const lessonsTable = done.length ? `<table class="group-table">
+        <thead><tr><th>Тема</th><th>Дата</th><th>Тип</th><th>Место</th></tr></thead>
+        <tbody>${done.sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt)).map(l => `<tr class="lesson-row">
+          <td>${l.title}</td>
+          <td>${fmtDate(l.startsAt)} · ${l.time}</td>
+          <td><span class="lesson-type ${l.type}">${D.lessonTypeLabel[l.type]}</span></td>
+          <td>${l.place}</td>
+        </tr>`).join("")}</tbody>
+      </table>` : `<div class="nested-empty">Пока нет проведённых занятий</div>`;
+      return `<article class="group-card">
+        <div class="group-head">
+          <div class="group-head-main">
+            <strong>${g.name}</strong>
+            <div class="group-course">${course?.name || "Направление"}</div>
+            <div class="group-meta">
+              <span class="group-pill blue">${students.length} учеников</span>
+              <span class="group-pill green">${done.length} / ${lessons.length} занятий</span>
+              <div class="group-progress">
+                <div class="group-progress-label"><span>Проведено</span><span>${pct}%</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+              </div>
+            </div>
+          </div>
+          <span class="group-chevron">▾</span>
+        </div>
+        <div class="group-body">
+          <div class="group-sections">
+            <div class="nested-section">
+              <div class="nested-head">
+                <span class="nested-title">Ученики</span>
+                <span class="nested-count">${students.length}</span>
+                <span class="nested-chevron">▾</span>
+              </div>
+              <div class="nested-body">${studentsTable}</div>
+            </div>
+            <div class="nested-section">
+              <div class="nested-head">
+                <span class="nested-title">Пройденные занятия</span>
+                <span class="nested-count">${done.length}</span>
+                <span class="nested-chevron">▾</span>
+              </div>
+              <div class="nested-body">${lessonsTable}</div>
+            </div>
+          </div>
+        </div>
+      </article>`;
+    }).join("") || `<div class="empty">Нет назначенных групп</div>`;
+
+    document.getElementById("groupsList").querySelectorAll(".group-head").forEach(h => {
+      h.onclick = () => h.closest(".group-card").classList.toggle("open");
+    });
+    document.getElementById("groupsList").querySelectorAll(".nested-head").forEach(h => {
+      h.onclick = (e) => { e.stopPropagation(); h.closest(".nested-section").classList.toggle("open"); };
+    });
+  }
+
+  function renderMarkHistoryTable(items, elId) {
+    const el = document.getElementById(elId);
+    if (!items || !items.length) {
+      el.innerHTML = `<div class="empty">Изменений пока нет</div>`;
+      return;
+    }
+    el.innerHTML = `<table>
+      <thead><tr><th>Дата</th><th>Ученик</th><th>Группа</th><th>Было</th><th>Стало</th><th>Кто изменил</th></tr></thead>
+      <tbody>${items.map(h => {
+        const d = h.changed_at ? new Date(h.changed_at).toLocaleString("ru-RU") : "—";
+        const oldLbl = h.old_mark ? D.markLabel[h.old_mark] : "—";
+        const newLbl = D.markLabel[h.mark] || h.mark;
+        const userName = h.user_name || D.fullName(D.userById(h.id_user));
+        return `<tr>
+          <td>${d}</td><td>${userName}</td><td>${h.group_name || "—"}</td>
+          <td>${oldLbl}</td><td>${newLbl}</td><td>${h.changed_by_name || "—"}</td>
+        </tr>`;
+      }).join("")}</tbody></table>`;
+  }
+
+  function renderReportHistory() {
+    renderMarkHistoryTable(D.markHistory || [], "markHistoryTable");
+  }
+
+  function openHistoryModal() {
+    if (!selectedLessonId) return;
+    const items = (D.markHistory || []).filter(h => h.id_lesson === selectedLessonId);
+    document.getElementById("historyModalSubtitle").textContent = lessonById(selectedLessonId)?.title || "Занятие";
+    renderMarkHistoryTable(items, "historyModalBody");
+    document.getElementById("historyModal").classList.add("open");
+  }
+
+  function closeHistoryModal() {
+    document.getElementById("historyModal").classList.remove("open");
+  }
+
+  function exportReportExcel() {
+    if (typeof XLSX === "undefined") {
+      showToast("Библиотека Excel не загружена", true);
+      return;
+    }
+    const gid = cmpReportGroup ? cmpReportGroup.getValue() : myGroups[0]?.id;
+    const groupName = groupById(gid)?.name || "все";
+    const stats = getStudentStats(gid);
+    const rows = [
+      ["Отчёт преподавателя", D.fullName(teacher), new Date().toLocaleDateString("ru-RU")],
+      [],
+      ["Статистика по группам"],
+      ["Группа", "Занятий", "Проведено", "%"],
+      ...myGroups.map(g => {
+        const lessons = myLessons.filter(l => l.id_group === g.id);
+        const d = lessons.filter(l => l.status === "done").length;
+        const t = lessons.length;
+        return [g.name, t, d, t ? Math.round(d / t * 100) + "%" : "0%"];
+      }),
+      [],
+      ["Статистика по ученикам — " + groupName],
+      ["Ученик", "Назначено", "Посетил", "Опозданий", "%"],
+      ...stats.map(s => [D.fullName(s.user), s.total, s.attended, s.late, s.pct + "%"]),
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Отчёт");
+    XLSX.writeFile(wb, "teacher_report_" + dateStr(new Date()) + ".xlsx");
+    showToast("Отчёт выгружен");
+  }
+
+  async function reloadCalendar() {
+    try {
+      const lessons = await TeacherApi.loadCalendarLessons(rangeFrom, rangeTo);
+      D.lessons = lessons;
+      return true;
+    } catch (err) {
+      showToast(err.message || "Ошибка загрузки расписания", true);
+      return false;
+    }
+  }
+
+  function ensureLessonInRange(lessonDate) {
+    const d = startOfDay(UI.parseDateStr(lessonDate));
+    let changed = false;
+    if (d < rangeFrom) {
+      rangeFrom = d;
+      cmpRangeFrom?.setValue(dateStr(rangeFrom));
+      changed = true;
+    }
+    if (d > rangeTo) {
+      rangeTo = d;
+      cmpRangeTo?.setValue(dateStr(rangeTo));
+      changed = true;
+    }
+    return changed;
+  }
+
+  async function applyScheduleRange() {
+    rangeFrom = startOfDay(UI.parseDateStr(cmpRangeFrom.getValue()));
+    rangeTo = startOfDay(UI.parseDateStr(cmpRangeTo.getValue()));
+    if (rangeTo < rangeFrom) {
+      showToast("Дата «По» не может быть раньше «С»", true);
+      return;
+    }
+    if (await reloadCalendar()) renderCalendar();
+  }
+
+  function getStudentStats(groupId) {
+    const groupLessons = myLessons.filter(l => l.id_group === groupId);
+    const lessonIds = new Set(groupLessons.map(l => l.id));
+    return D.groupStudents(groupId).map(u => {
+      const assigned = groupLessons.filter(l => lessonStudents(l).some(s => s.id === u.id));
+      const marks = D.marks.filter(m => m.id_user === u.id && lessonIds.has(m.id_lesson));
+      const attended = marks.filter(m => m.mark === "present" || m.mark === "late").length;
+      const late = marks.filter(m => m.mark === "late").length;
+      const total = assigned.length;
+      return { user: u, total, attended, late, pct: total ? Math.round(attended / total * 100) : 0 };
+    });
+  }
+
+  function renderReport() {
+    applyAutoComplete();
+    const allMy = myLessons;
+    const done = allMy.filter(l => l.status === "done");
+    const planned = allMy.length;
+    const conducted = done.length;
+
+    document.getElementById("reportStats").innerHTML = `
+      <div class="stat"><div class="stat-label">Мои занятия</div><div class="stat-value">${planned}</div><div class="stat-sub">в расписании</div></div>
+      <div class="stat"><div class="stat-label">Проведено</div><div class="stat-value">${conducted}</div><div class="stat-sub">из ${planned} (${planned ? Math.round(conducted / planned * 100) : 0}%)</div></div>
+      <div class="stat"><div class="stat-label">Предстоит</div><div class="stat-value">${planned - conducted}</div><div class="stat-sub">запланировано</div></div>
+      <div class="stat"><div class="stat-label">Отметок сохранено</div><div class="stat-value">${myMarks().length}</div><div class="stat-sub">по моим занятиям</div></div>`;
+
+    document.getElementById("lessonStatsTable").innerHTML = myGroups.length ? `<table>
+      <thead><tr><th>Группа</th><th>Должно быть</th><th>Проведено</th><th>%</th></tr></thead><tbody>
+      ${myGroups.map(g => {
+        const lessons = allMy.filter(l => l.id_group === g.id);
+        const d = lessons.filter(l => l.status === "done").length;
+        const t = lessons.length;
+        const pct = t ? Math.round(d / t * 100) : 0;
+        return `<tr><td>${g.name}</td><td>${t}</td><td>${d}</td><td>${pct}%<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div></td></tr>`;
+      }).join("")}
+      </tbody></table>` : `<div class="empty">Нет данных</div>`;
+
+    if (!cmpReportGroup) {
+      cmpReportGroup = UI.createSelect(document.getElementById("reportGroupFilterWrap"), {
+        label: "Группа",
+        options: myGroups.map(g => ({ value: g.id, label: g.name })),
+        value: String(myGroups[0]?.id || ""),
+        onChange: renderStudentStats
+      });
+    } else {
+      cmpReportGroup.setOptions(myGroups.map(g => ({ value: g.id, label: g.name })));
+    }
+    renderStudentStats();
+    renderReportHistory();
+  }
+
+  function renderStudentStats() {
+    const gid = cmpReportGroup ? cmpReportGroup.getValue() : myGroups[0]?.id;
+    const stats = getStudentStats(gid);
+    document.getElementById("studentStatsTable").innerHTML = stats.length ? `<table>
+      <thead><tr><th>Ученик</th><th>Назначено</th><th>Посетил</th><th>Опозданий</th><th>%</th></tr></thead><tbody>
+      ${stats.map(s => `<tr>
+        <td>${D.fullName(s.user)}</td><td>${s.total}</td><td>${s.attended}</td>
+        <td>${s.late ? `<span class="tag orange">${s.late}</span>` : "0"}</td>
+        <td>${s.pct}%<div class="progress-bar"><div class="progress-fill" style="width:${s.pct}%"></div></div></td>
+      </tr>`).join("")}
+      </tbody></table>` : `<div class="empty">Нет учеников</div>`;
+  }
+
+  async function switchTab(name) {
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + name));
+    if (name === "schedule") await applyScheduleRange();
+    if (name === "groups") renderGroups();
+    if (name === "report") {
+      try {
+        D.markHistory = await TeacherApi.loadMarkHistory(null);
+      } catch (_e) { /* use cached */ }
+      renderReport();
+    }
+  }
+
+  function initComponents() {
+    cmpGroup = UI.createSelect(document.getElementById("fieldLessonGroup"), {
+      label: "Рабочая группа",
+      options: myGroups.map(g => ({ value: g.id, label: g.name })),
+      value: String(myGroups[0]?.id || ""),
+      onChange: () => { toggleSubgroupField(); updateModalPreview(); }
+    });
+    cmpDate = UI.createDatePicker(document.getElementById("fieldLessonDate"), {
+      label: "Дата", value: dateStr(new Date()), onChange: updateModalPreview
+    });
+    cmpTime = UI.createTimePicker(document.getElementById("fieldLessonTime"), {
+      label: "Начало", value: "10:30", onChange: updateModalPreview
+    });
+    cmpTimeEnd = UI.createTimePicker(document.getElementById("fieldLessonTimeEnd"), {
+      label: "Окончание", value: "11:30", onChange: updateModalPreview
+    });
+    cmpType = UI.createSelect(document.getElementById("fieldLessonType"), {
+      label: "Тип",
+      options: [{ value: "lecture", label: "Лекция" }, { value: "practice", label: "Практика" }],
+      value: "lecture",
+      onChange: () => { toggleSubgroupField(); updateModalPreview(); }
+    });
+    cmpRangeFrom = UI.createDatePicker(document.getElementById("rangeFromWrap"), {
+      label: "С", value: dateStr(rangeFrom), onChange: applyScheduleRange
+    });
+    cmpRangeTo = UI.createDatePicker(document.getElementById("rangeToWrap"), {
+      label: "По", value: dateStr(rangeTo), onChange: applyScheduleRange
+    });
+  }
+
+  document.getElementById("tabs").onclick = (e) => { const tab = e.target.closest(".tab"); if (tab) switchTab(tab.dataset.tab); };
+  document.getElementById("prevHomeDay").onclick = () => { homeDay = addDays(homeDay, -1); renderHomeSchedule(); };
+  document.getElementById("nextHomeDay").onclick = () => {
+    const today = startOfDay(new Date());
+    if (homeDay < today) { homeDay = addDays(homeDay, 1); renderHomeSchedule(); }
+  };
+  document.getElementById("scheduleFilter").onclick = (e) => {
+    const btn = e.target.closest("[data-sfilter]");
+    if (!btn) return;
+    scheduleFilter = btn.dataset.sfilter;
+    document.querySelectorAll(".schedule-filter-btn").forEach(b => {
+      b.classList.toggle("active", b.dataset.sfilter === scheduleFilter);
+    });
+    renderCalendar();
+  };
+  document.getElementById("addLessonBtn").onclick = () => openLessonModal(null);
+  document.getElementById("cancelModal").onclick = closeLessonModal;
+  document.getElementById("lessonModalClose").onclick = closeLessonModal;
+  document.getElementById("deleteLessonBtn").onclick = deleteLesson;
+  document.getElementById("lessonForm").onsubmit = saveLesson;
+  document.getElementById("lessonModal").onclick = (e) => { if (e.target.id === "lessonModal") closeLessonModal(); };
+  document.getElementById("lessonPlace").addEventListener("input", updateModalPreview);
+  document.getElementById("lessonTitle").addEventListener("input", updateModalPreview);
+  document.getElementById("subgroupList").addEventListener("change", updateModalPreview);
+
+  document.getElementById("saveBtn").onclick = async () => {
+    if (!selectedLessonId) return;
+    const l = lessonById(selectedLessonId);
+    if (!isMyLesson(l)) return;
+    const btn = document.getElementById("saveBtn");
+    btn.disabled = true;
+    try {
+      await TeacherApi.saveAttendance(selectedLessonId, attendance[selectedLessonId]);
+      D = await TeacherApi.refresh();
+      D.markHistory = await TeacherApi.loadMarkHistory(null);
+      refreshMyLessons();
+      savedLessons.add(selectedLessonId);
+      document.getElementById("saveStatus").textContent = "Сохранено";
+      showToast(`Посещаемость сохранена · ${groupById(l.id_group)?.name || "—"}`);
+      if (document.querySelector(".panel.active")?.id === "panel-report") renderReport();
+    } catch (err) {
+      showToast(err.message || "Ошибка сохранения", true);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  document.getElementById("historyBtn").onclick = openHistoryModal;
+  document.getElementById("historyModalClose").onclick = closeHistoryModal;
+  document.getElementById("historyModalOk").onclick = closeHistoryModal;
+  document.getElementById("historyModal").onclick = (e) => { if (e.target.id === "historyModal") closeHistoryModal(); };
+  document.getElementById("exportReportBtn").onclick = exportReportExcel;
+
+  document.getElementById("teacherAvatar").textContent = teacher ? (teacher.firstName[0] + teacher.lastName[0]).toUpperCase() : "—";
+  document.getElementById("teacherName").textContent = teacher ? D.fullName(teacher) : "—";
+
+  initComponents();
+  refreshMyLessons();
+  renderNext();
+  setupHomeDayPicker();
+  renderHomeSchedule();
+  renderGroups();
+})();
+  </script>
+</body>
+</html>

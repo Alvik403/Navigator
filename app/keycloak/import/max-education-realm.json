@@ -1,0 +1,133 @@
+{
+  "realm": "max-education",
+  "enabled": true,
+  "displayName": "MAX RASS",
+  "displayNameHtml": "MAX RASS",
+  "loginTheme": "max-rass",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["ru"],
+  "defaultLocale": "ru",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": false,
+  "registrationEmailAsUsername": false,
+  "editUsernameAllowed": false,
+  "sslRequired": "none",
+  "roles": {
+    "realm": [
+      { "name": "admin", "description": "Полный доступ к настройкам и справочникам" },
+      { "name": "hr_manager", "description": "Управление сотрудниками, группами, отчетами" },
+      { "name": "teacher", "description": "Доступ к группам, расписанию и занятиям" },
+      { "name": "employee", "description": "Получение информации и уведомлений" },
+      { "name": "auditor", "description": "Только чтение журналов и отчетов" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "hr-web",
+      "name": "HR Web",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "rootUrl": "http://localhost:5173",
+      "baseUrl": "http://localhost:5173/hr",
+      "redirectUris": [
+        "http://localhost:5173/callback"
+      ],
+      "webOrigins": ["http://localhost:5173", "+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/##http://localhost:5173/login/hr##http://localhost:5173/login/teacher##http://localhost:5173/callback"
+      },
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "email"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"]
+    },
+    {
+      "clientId": "teacher-web",
+      "name": "Teacher Web",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "rootUrl": "http://localhost:5173",
+      "baseUrl": "http://localhost:5173/teacher",
+      "redirectUris": [
+        "http://localhost:5173/callback"
+      ],
+      "webOrigins": ["http://localhost:5173", "+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/##http://localhost:5173/login/hr##http://localhost:5173/login/teacher##http://localhost:5173/callback"
+      },
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "email"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"]
+    },
+    {
+      "clientId": "max-auth-service",
+      "name": "MAX Auth Service",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "max-auth-service-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "email"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"]
+    }
+  ],
+  "users": [
+    {
+      "username": "hr.manager",
+      "email": "hr.manager@company.ru",
+      "firstName": "Анна",
+      "lastName": "Иванова",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "hr123456",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["hr_manager"]
+    },
+    {
+      "username": "teacher.demo",
+      "email": "teacher.demo@company.ru",
+      "firstName": "Пётр",
+      "lastName": "Сидоров",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "teacher123456",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["teacher"]
+    },
+    {
+      "username": "admin",
+      "email": "admin@company.ru",
+      "firstName": "Системный",
+      "lastName": "Администратор",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123456",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin", "hr_manager"]
+    }
+  ]
+}

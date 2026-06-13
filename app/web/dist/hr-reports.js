@@ -1,0 +1,557 @@
+(function (global) {
+  "use strict";
+
+  var STATUS_RU = { active: "активен", inactive: "не активен" };
+  var STRIKE_STATUS_RU = { active: "активен", appealed: "апелляция", revoked: "отменён" };
+
+  var REPORTS = [
+    {
+      id: "employees",
+      title: "Список сотрудников",
+      purpose: "Выгрузка данных по ученикам",
+      sheetName: "Сотрудники",
+      fileName: "report_employees",
+      view: "tree",
+    },
+    {
+      id: "attendance_groups",
+      title: "Посещение по группам",
+      purpose: "Аналитика посещаемости",
+      sheetName: "Посещение групп",
+      fileName: "report_attendance_groups",
+      view: "table",
+    },
+    {
+      id: "strikes",
+      title: "Страйки",
+      purpose: "Аналитика страйков",
+      sheetName: "Страйки",
+      fileName: "report_strikes",
+      view: "tree",
+    },
+    {
+      id: "employee_courses",
+      title: "Курсы сотрудника",
+      purpose: "Группы по сотрудникам",
+      sheetName: "Курсы сотрудников",
+      fileName: "report_employee_courses",
+      view: "tree",
+    },
+    {
+      id: "work_groups",
+      title: "Рабочие группы",
+      purpose: "Направления и состав",
+      sheetName: "Рабочие группы",
+      fileName: "report_work_groups",
+      view: "tree",
+    },
+    {
+      id: "curators",
+      title: "Кураторы",
+      purpose: "Подопечные по кураторам",
+      sheetName: "Кураторы",
+      fileName: "report_curators",
+      view: "tree",
+    },
+  ];
+
+  function fmtName(row) {
+    return [row.last_name || row.lastName, row.first_name || row.firstName, row.middle_name || row.middleName]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  function fmtDateShort(value) {
+    if (!value) return "—";
+    return new Date(value).toLocaleDateString("ru-RU");
+  }
+
+  function fmtPhone(phone, HrFields) {
+    if (!phone) return "—";
+    if (HrFields && HrFields.formatPhoneDisplay) {
+      return HrFields.formatPhoneDisplay(phone) || phone;
+    }
+    return phone;
+  }
+
+  function pctNum(part, total) {
+    if (!total) return 0;
+    return Math.round((part / total) * 100);
+  }
+
+  function pct(part, total) {
+    if (!total) return "—";
+    return pctNum(part, total) + "%";
+  }
+
+  function colWidth(headers, rows, keyIdx) {
+    var max = String(headers[keyIdx] || "").length;
+    rows.forEach(function (row) {
+      var len = String(row[keyIdx] == null ? "" : row[keyIdx]).length;
+      if (len > max) max = len;
+    });
+    return Math.min(Math.max(max + 2, 10), 48);
+  }
+
+  function buildStyledWorkbook(meta, headers, rows) {
+    if (!global.XLSX) throw new Error("Библиотека XLSX не загружена");
+    var aoa = [
+      [meta.title || "Отчёт"],
+      ["Сформировано: " + new Date().toLocaleString("ru-RU")],
+    ];
+    if (meta.purpose) aoa.push(["Назначение: " + meta.purpose]);
+    if (meta.hrName) aoa.push(["HR: " + meta.hrName]);
+    aoa.push(["Записей: " + rows.length], [], headers);
+    rows.forEach(function (row) { aoa.push(row); });
+
+    var ws = global.XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = headers.map(function (_, i) { return { wch: colWidth(headers, rows, i) }; });
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: Math.max(headers.length - 1, 0) } }];
+
+    var wb = global.XLSX.utils.book_new();
+    global.XLSX.utils.book_append_sheet(wb, ws, (meta.sheetName || "Отчёт").slice(0, 31));
+    return wb;
+  }
+
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function branchOpen(expanded, id) {
+    if (expanded[id] === true) return true;
+    if (expanded[id] === false) return false;
+    return false;
+  }
+
+  function isNestedBranch(child) {
+    return !!(child && (child.branch || (child.id && Array.isArray(child.children))));
+  }
+
+  function renderLeafLi(child) {
+    var fieldsHtml = (child.fields || []).map(function (f) {
+      return '<span class="report-field"><em>' + escapeHtml(f.label) + "</em> " + escapeHtml(f.value) + "</span>";
+    }).join("");
+    return '<li class="report-leaf">' +
+      '<div class="report-leaf-head">' +
+      '<span class="report-leaf-title">' + escapeHtml(child.title) + "</span>" +
+      renderTags(child.tags) +
+      "</div>" +
+      (fieldsHtml ? '<div class="report-leaf-fields">' + fieldsHtml + "</div>" : "") +
+      "</li>";
+  }
+
+  function renderBranchBlock(node, expanded, nested) {
+    var open = branchOpen(expanded, node.id);
+    var cls = "report-branch" + (nested ? " report-branch-nested" : "");
+    var bodyHtml = renderBranchBody(node.children || [], expanded);
+    return '<details class="' + cls + '" data-branch-id="' + escapeHtml(node.id) + '"' + (open ? " open" : "") + ">" +
+      '<summary class="report-branch-head">' +
+      '<span class="report-chevron" aria-hidden="true"></span>' +
+      '<span class="report-branch-title">' + escapeHtml(node.title) + "</span>" +
+      (node.meta ? '<span class="report-branch-meta">' + escapeHtml(node.meta) + "</span>" : "") +
+      renderTags(node.tags) +
+      '<span class="report-branch-badge">' + escapeHtml(node.badge || "") + "</span>" +
+      "</summary>" +
+      bodyHtml +
+      "</details>";
+  }
+
+  function renderBranchBody(children, expanded) {
+    if (!children.length) {
+      return '<div class="report-branch-body"><div class="nested-empty">Нет записей</div></div>';
+    }
+    var parts = [];
+    var leafBuffer = [];
+    children.forEach(function (child) {
+      if (isNestedBranch(child)) {
+        if (leafBuffer.length) {
+          parts.push('<ul class="report-leaf-list">' + leafBuffer.join("") + "</ul>");
+          leafBuffer = [];
+        }
+        parts.push(renderBranchBlock(child, expanded, true));
+      } else {
+        leafBuffer.push(renderLeafLi(child));
+      }
+    });
+    if (leafBuffer.length) {
+      parts.push('<ul class="report-leaf-list">' + leafBuffer.join("") + "</ul>");
+    }
+    return '<div class="report-branch-body">' + parts.join("") + "</div>";
+  }
+
+  function renderTree(tree, expanded) {
+    if (!tree || !tree.length) {
+      return '<div class="empty">Нет данных для отображения</div>';
+    }
+    return '<div class="report-tree">' + tree.map(function (branch) {
+      return renderBranchBlock(branch, expanded, false);
+    }).join("") + "</div>";
+  }
+
+  function buildEmployeesReport(ctx) {
+    var D = ctx.D;
+    var HrFields = ctx.HrFields;
+    var headers = ["Группа", "Фамилия", "Имя", "Отчество", "ID MAX", "Телефон", "Куратор", "Страйки", "Статус"];
+    var buckets = {};
+    D.usersByRole("student").forEach(function (u) {
+      var groups = D.studentGroups(u.id);
+      var keys = groups.length ? groups.map(function (g) { return g.name; }) : ["Без группы"];
+      keys.forEach(function (key) {
+        if (!buckets[key]) buckets[key] = [];
+        if (!buckets[key].some(function (x) { return x.id === u.id; })) buckets[key].push(u);
+      });
+    });
+    var tree = Object.keys(buckets).sort(function (a, b) {
+      if (a === "Без группы") return 1;
+      if (b === "Без группы") return -1;
+      return a.localeCompare(b, "ru");
+    }).map(function (name) {
+      var list = buckets[name];
+      return {
+        id: "grp-" + name,
+        title: name,
+        badge: list.length + " чел.",
+        children: list.map(function (u) {
+          var curator = D.userById(u.id_curator);
+          return {
+            title: D.fullName(u),
+            tags: [
+              u.id_max ? "MAX " + u.id_max : null,
+              STATUS_RU[u.status] || u.status,
+              (u.strikes || 0) ? "страйки " + u.strikes + "/3" : null,
+            ].filter(Boolean),
+            fields: [
+              { label: "Телефон", value: fmtPhone(u.phone, HrFields) },
+              { label: "Куратор", value: curator ? D.fullName(curator) : "—" },
+            ],
+            _user: u,
+          };
+        }),
+      };
+    });
+    var rows = [];
+    tree.forEach(function (branch) {
+      branch.children.forEach(function (child) {
+        var u = child._user;
+        if (!u) return;
+        var curator = D.userById(u.id_curator);
+        rows.push([
+          branch.title,
+          u.lastName,
+          u.firstName,
+          u.middleName || "",
+          u.id_max || "",
+          fmtPhone(u.phone, HrFields),
+          curator ? D.fullName(curator) : "—",
+          String(u.strikes || 0),
+          STATUS_RU[u.status] || u.status,
+        ]);
+      });
+    });
+    return { view: "tree", tree: tree, headers: headers, rows: rows };
+  }
+
+  function buildEmployeeCoursesReport(ctx) {
+    var D = ctx.D;
+    var headers = ["Сотрудник", "Направление", "Рабочая группа", "Статус"];
+    var tree = D.usersByRole("student").map(function (u) {
+      var groups = D.studentGroups(u.id);
+      return {
+        id: "emp-" + u.id,
+        title: D.fullName(u),
+        badge: groups.length ? groups.length + " групп" : "без групп",
+        children: groups.length ? groups.map(function (g) {
+          var course = D.courseOfGroup(g.id);
+          return {
+            title: g.name,
+            tags: [course ? course.name : "—", STATUS_RU[u.status] || u.status],
+            fields: [{ label: "Направление", value: course ? course.name : "—" }],
+          };
+        }) : [{
+          title: "Не назначен в группу",
+          tags: [STATUS_RU[u.status] || u.status],
+          fields: [],
+        }],
+      };
+    }).sort(function (a, b) { return a.title.localeCompare(b.title, "ru"); });
+
+    var rows = [];
+    tree.forEach(function (branch) {
+      branch.children.forEach(function (child) {
+        rows.push([
+          branch.title,
+          (child.fields && child.fields[0] && child.fields[0].value) || (child.tags && child.tags[0]) || "—",
+          child.title,
+          (child.tags && child.tags[1]) || "",
+        ]);
+      });
+    });
+    return { view: "tree", tree: tree, headers: headers, rows: rows };
+  }
+
+  function buildWorkGroupsReport(ctx) {
+    var D = ctx.D;
+    var HrFields = ctx.HrFields;
+    var hr = ctx.hr;
+    var headers = ["Направление", "Группа", "Участник", "Статус", "Телефон"];
+    var byCourse = {};
+    D.allWorkingGroups().filter(function (g) { return g.id_hr === hr.id; }).forEach(function (g) {
+      var course = D.courseOfGroup(g.id);
+      var key = course ? course.name : "Без направления";
+      if (!byCourse[key]) byCourse[key] = [];
+      byCourse[key].push(g);
+    });
+    var tree = Object.keys(byCourse).sort(function (a, b) { return a.localeCompare(b, "ru"); }).map(function (courseName) {
+      var groups = byCourse[courseName];
+      var totalMembers = groups.reduce(function (sum, g) { return sum + D.groupStudents(g.id).length; }, 0);
+      return {
+        id: "dir-" + courseName,
+        title: courseName,
+        badge: groups.length + " групп · " + totalMembers + " чел.",
+        children: groups.map(function (g) {
+          var students = D.groupStudents(g.id);
+          var st = g.status === "forming" ? "формируется" : g.status === "active" ? "активна" : g.status;
+          return {
+            id: "wg-" + g.id,
+            branch: true,
+            title: g.name,
+            badge: students.length + " уч.",
+            tags: [st],
+            children: students.length ? students.map(function (u) {
+              return {
+                title: D.fullName(u),
+                tags: [STATUS_RU[u.status] || u.status],
+                fields: [{ label: "Телефон", value: fmtPhone(u.phone, HrFields) }],
+                _user: u,
+              };
+            }) : [{ title: "Нет участников", tags: [], fields: [], _empty: true }],
+          };
+        }),
+      };
+    });
+    var rows = [];
+    tree.forEach(function (branch) {
+      branch.children.forEach(function (groupNode) {
+        (groupNode.children || []).forEach(function (child) {
+          if (child._empty) {
+            rows.push([branch.title, groupNode.title, "—", "—", "—"]);
+            return;
+          }
+          var u = child._user;
+          rows.push([
+            branch.title,
+            groupNode.title,
+            child.title,
+            (child.tags && child.tags[0]) || "",
+            child.fields && child.fields[0] ? child.fields[0].value : "—",
+          ]);
+        });
+      });
+    });
+    return { view: "tree", tree: tree, headers: headers, rows: rows };
+  }
+
+  function buildCuratorsReport(ctx) {
+    var D = ctx.D;
+    var HrFields = ctx.HrFields;
+    var headers = ["Куратор", "Подопечный", "Телефон", "Группы"];
+    var tree = D.usersByRole("curator").map(function (c) {
+      var wards = D.usersByRole("student").filter(function (u) { return u.id_curator === c.id; });
+      return {
+        id: "cur-" + c.id,
+        title: D.fullName(c),
+        badge: wards.length ? wards.length + " подопечных" : "нет подопечных",
+        meta: fmtPhone(c.phone, HrFields),
+        children: wards.length ? wards.map(function (u) {
+          var groups = D.studentGroups(u.id).map(function (g) { return g.name; }).join(", ");
+          return {
+            title: D.fullName(u),
+            tags: [u.phone ? "есть телефон" : "без телефона"],
+            fields: [
+              { label: "Телефон", value: fmtPhone(u.phone, HrFields) },
+              { label: "Группы", value: groups || "—" },
+            ],
+          };
+        }) : [{ title: "Нет подопечных", tags: [], fields: [], _empty: true }],
+      };
+    }).sort(function (a, b) { return a.title.localeCompare(b.title, "ru"); });
+
+    var rows = [];
+    tree.forEach(function (branch) {
+      branch.children.forEach(function (child) {
+        if (child._empty) return;
+        rows.push([
+          branch.title,
+          child.title,
+          child.fields && child.fields[0] ? child.fields[0].value : "—",
+          child.fields && child.fields[1] ? child.fields[1].value : "—",
+        ]);
+      });
+    });
+    return { view: "tree", tree: tree, headers: headers, rows: rows };
+  }
+
+  async function buildAttendanceGroupsReport(ctx) {
+    var data = await ctx.api.get("/hr/reports/attendance/groups");
+    var items = data.items || [];
+    var headers = ["Группа", "Всего", "Был", "Опоздал", "Не был", "%"];
+    var rows = items.map(function (r) {
+      var attended = (r.present_count || 0) + (r.late_count || 0);
+      return [
+        r.group_name || "—",
+        String(r.marks_total || 0),
+        String(r.present_count || 0),
+        String(r.late_count || 0),
+        String(r.absent_count || 0),
+        pct(attended, r.marks_total || 0),
+      ];
+    });
+    return {
+      view: "table",
+      headers: headers,
+      rows: rows,
+      bars: items.map(function (r) {
+        var attended = (r.present_count || 0) + (r.late_count || 0);
+        return { pct: pctNum(attended, r.marks_total || 0) };
+      }),
+    };
+  }
+
+  async function buildStrikesReport(ctx) {
+    var data = await ctx.api.get("/hr/strikes");
+    var items = data.items || [];
+    var headers = ["ФИО", "Группа", "№", "Статус", "Причина", "Дата"];
+    var byGroup = {};
+    items.forEach(function (s) {
+      var key = s.group_name || "Без группы";
+      if (!byGroup[key]) byGroup[key] = [];
+      byGroup[key].push(s);
+    });
+    var tree = Object.keys(byGroup).sort(function (a, b) { return a.localeCompare(b, "ru"); }).map(function (groupName) {
+      var list = byGroup[groupName];
+      return {
+        id: "str-" + groupName,
+        title: groupName,
+        badge: list.length + " страйков",
+        children: list.map(function (s) {
+          return {
+            title: fmtName(s),
+            tags: ["№" + s.strike_number, STRIKE_STATUS_RU[s.status] || s.status],
+            fields: [
+              { label: "Причина", value: s.reason || "—" },
+              { label: "Дата", value: fmtDateShort(s.created_at) },
+            ],
+          };
+        }),
+      };
+    });
+    var rows = items.map(function (s) {
+      return [
+        fmtName(s),
+        s.group_name || "—",
+        String(s.strike_number || ""),
+        STRIKE_STATUS_RU[s.status] || s.status,
+        s.reason || "",
+        fmtDateShort(s.created_at),
+      ];
+    });
+    return { view: "tree", tree: tree, headers: headers, rows: rows };
+  }
+
+  async function loadReport(reportId, ctx) {
+    var meta = REPORTS.find(function (r) { return r.id === reportId; });
+    if (!meta) throw new Error("Неизвестный отчёт");
+
+    var payload;
+    if (reportId === "employees") payload = buildEmployeesReport(ctx);
+    else if (reportId === "employee_courses") payload = buildEmployeeCoursesReport(ctx);
+    else if (reportId === "work_groups") payload = buildWorkGroupsReport(ctx);
+    else if (reportId === "curators") payload = buildCuratorsReport(ctx);
+    else if (reportId === "attendance_groups") payload = await buildAttendanceGroupsReport(ctx);
+    else if (reportId === "strikes") payload = await buildStrikesReport(ctx);
+    else throw new Error("Отчёт не реализован");
+
+    return {
+      meta: meta,
+      view: payload.view || meta.view || "table",
+      tree: payload.tree || null,
+      headers: payload.headers,
+      rows: payload.rows,
+      bars: payload.bars || null,
+    };
+  }
+
+  function exportReport(result, ctx) {
+    var wb = buildStyledWorkbook({
+      title: result.meta.title,
+      purpose: result.meta.purpose,
+      sheetName: result.meta.sheetName,
+      hrName: ctx.hrName,
+    }, result.headers, result.rows);
+    global.XLSX.writeFile(wb, result.meta.fileName + "_" + new Date().toISOString().slice(0, 10) + ".xlsx");
+  }
+
+  function renderTags(tags) {
+    if (!tags || !tags.length) return "";
+    return '<span class="report-tags">' + tags.map(function (t) {
+      return '<span class="report-tag">' + escapeHtml(t) + "</span>";
+    }).join("") + "</span>";
+  }
+
+  function renderPreviewTable(result) {
+    var headers = result.headers;
+    var rows = result.rows;
+    if (!rows.length) {
+      return '<div class="empty">Нет данных для отображения</div>';
+    }
+    var head = headers.map(function (h) { return "<th>" + escapeHtml(h) + "</th>"; }).join("");
+    var body = rows.map(function (row, ri) {
+      return "<tr>" + row.map(function (cell, ci) {
+        if (result.bars && ci === headers.length - 1) {
+          var p = result.bars[ri] ? result.bars[ri].pct : 0;
+          return '<td class="report-bar-cell"><div class="report-bar-wrap"><div class="report-bar" style="width:' + p + '%"></div></div><span class="report-bar-label">' + p + "%</span></td>";
+        }
+        return "<td>" + escapeHtml(cell == null || cell === "" ? "—" : cell) + "</td>";
+      }).join("") + "</tr>";
+    }).join("");
+    return '<div class="table-wrap report-preview-table"><table class="report-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + "</tbody></table></div>";
+  }
+
+  function renderPreview(result, expanded) {
+    if (!result) return "";
+    if (result.view === "tree" && result.tree && result.tree.length) {
+      return renderTree(result.tree, expanded || {});
+    }
+    return renderPreviewTable(result);
+  }
+
+  function bindTreeState(container, expanded) {
+    if (!container) return;
+    container.querySelectorAll("details.report-branch").forEach(function (el) {
+      el.addEventListener("toggle", function () {
+        expanded[el.dataset.branchId] = el.open;
+      });
+    });
+  }
+
+  function collapseAll(container, expanded) {
+    if (!container || !expanded) return;
+    container.querySelectorAll("details.report-branch").forEach(function (el) {
+      el.open = false;
+      if (el.dataset.branchId) expanded[el.dataset.branchId] = false;
+    });
+  }
+
+  global.HrReports = {
+    catalog: REPORTS,
+    load: loadReport,
+    export: exportReport,
+    renderPreview: renderPreview,
+    bindTreeState: bindTreeState,
+    collapseAll: collapseAll,
+  };
+})(window);

@@ -1,0 +1,110 @@
+services:
+  app-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: max_rass
+      POSTGRES_USER: max_rass
+      POSTGRES_PASSWORD: max_rass
+    volumes:
+      - app_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U max_rass -d max_rass"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0.6
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_HOSTNAME: http://localhost:5173
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_SPI_COOKIE__DEFAULT__SAME_SITE__VALUE: Lax
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak/import:/opt/keycloak/data/import:ro
+      - ./keycloak/themes/max-rass:/opt/keycloak/themes/max-rass:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 45s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  max-auth:
+    build: ./max-auth
+    env_file:
+      - .env
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: max-education
+      KEYCLOAK_CLIENT_ID: max-auth-service
+      KEYCLOAK_CLIENT_SECRET: max-auth-service-secret
+      MAX_SESSION_TTL: "300"
+      MAX_BOT_BASE_URL: https://max.ru/id482403059838_2_bot
+      WEB_RETURN_URL: http://localhost:5173/max
+      WEB_URL: http://localhost:5173
+      MAX_AUTH_PAYLOAD_PREFIX: login_
+      MAX_RESET_PAYLOAD_PREFIX: reset_
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      DATABASE_URL: postgresql://max_rass:max_rass@app-postgres:5432/max_rass
+    ports:
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8025/health', timeout=3).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      app-postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  web:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./web/dist:/usr/share/nginx/html:ro
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "5173:80"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      max-auth:
+        condition: service_healthy
+
+volumes:
+  app_postgres_data:
+  postgres_data:

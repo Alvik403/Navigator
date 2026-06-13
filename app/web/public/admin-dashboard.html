@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Администратор — MAX RASS</title>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="icons.css">
+  <link rel="stylesheet" href="dashboard.css">
+  <script src="/auth-guard.js"></script>
+  <script>window.MaxRassAuth.requireSystemRoles(["admin"], "/");</script>
+  <style>
+    .admin-soon-shell {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px 16px;
+      background:
+        radial-gradient(circle at 0% 0%, rgba(124, 58, 237, 0.1), transparent 42%),
+        radial-gradient(circle at 100% 100%, rgba(37, 99, 235, 0.08), transparent 38%),
+        var(--bg, #f4f7fb);
+    }
+    .admin-soon-card {
+      width: min(520px, 100%);
+      padding: 40px 32px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--surface);
+      box-shadow: var(--shadow-lg, 0 20px 60px rgba(15, 23, 42, 0.08));
+      text-align: center;
+    }
+    .admin-soon-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 16px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #fef3c7;
+      color: #92400e;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .admin-soon-card h1 {
+      margin: 0 0 12px;
+      font-size: 26px;
+      letter-spacing: -0.02em;
+    }
+    .admin-soon-card p {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .admin-soon-actions {
+      display: grid;
+      gap: 10px;
+    }
+    .admin-soon-actions .btn { width: 100%; justify-content: center; }
+    .admin-soon-note {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      text-align: left;
+    }
+    .admin-soon-note strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <main class="admin-soon-shell">
+    <section class="admin-soon-card">
+      <div class="admin-soon-badge">В разработке</div>
+      <h1>Панель администратора</h1>
+      <p>
+        Раздел находится в разработке и будет доступен позже.
+        Сейчас управление пользователями и группами выполняется через HR-панель.
+      </p>
+      <div class="admin-soon-actions">
+        <a class="btn" href="/hr-dashboard.html">Перейти в HR-панель</a>
+        <a class="btn secondary" href="/">На главную</a>
+        <a class="btn secondary" href="/logout">Выйти</a>
+      </div>
+      <div class="admin-soon-note">
+        <strong>Как назначить HR сейчас:</strong><br>
+        1. Keycloak → пользователь → роль <code>hr_manager</code><br>
+        2. В БД — профиль с ролью <code>hr</code> и привязка логина Keycloak<br>
+        3. Укажите ID MAX для входа через бота
+      </div>
+    </section>
+  </main>
+</body>
+</html>

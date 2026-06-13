@@ -1,0 +1,134 @@
+/* MAX RASS — стили кастомных UI-компонентов */
+.ui-field { margin-bottom: 12px; }
+.ui-label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: #111827; }
+
+.ui-dropdown { position: relative; width: 100%; }
+
+.ui-trigger {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  height: var(--control-h, 38px); min-height: var(--control-h, 38px);
+  padding: 0 12px; border: 1px solid #e2e8f0; border-radius: var(--control-radius, 10px);
+  background: #fff; font: inherit; font-size: var(--control-font, 13px); color: #111827;
+  cursor: pointer; text-align: left; transition: border-color .15s;
+}
+.ui-trigger:hover { border-color: #bfdbfe; }
+.ui-trigger:focus,
+.ui-trigger:focus-visible { outline: none; }
+.ui-dropdown.open .ui-trigger {
+  border-color: var(--focus-border, #2563eb);
+}
+.ui-trigger-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-trigger-text.placeholder { color: #94a3b8; }
+
+.ui-chevron {
+  width: 0; height: 0; border: 5px solid transparent; border-top-color: #64748b;
+  margin-top: 4px; flex-shrink: 0; transition: transform .15s;
+}
+.ui-dropdown.open .ui-chevron { transform: rotate(180deg); margin-top: -2px; }
+
+.ui-icon-cal, .ui-icon-clock {
+  width: 18px; height: 18px; flex-shrink: 0; opacity: .55;
+  background-size: contain; background-repeat: no-repeat; background-position: center;
+}
+.ui-icon-cal { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%232563eb'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'/%3E%3C/svg%3E"); }
+.ui-icon-clock { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%232563eb'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'/%3E%3C/svg%3E"); }
+
+.ui-menu {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
+  max-height: 240px; overflow-y: auto; padding: 6px;
+  border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+  box-shadow: 0 12px 40px rgba(15,23,42,.12);
+}
+.ui-dropdown.open .ui-menu { display: block; }
+.ui-menu.ui-menu-floating {
+  right: auto;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.14);
+}
+
+.ui-option {
+  display: block; width: 100%; padding: 9px 12px; border: 0; border-radius: 8px;
+  background: transparent; font: inherit; font-size: 14px; color: #111827;
+  text-align: left; cursor: pointer;
+}
+.ui-option:hover { background: #f1f5f9; }
+.ui-option:focus,
+.ui-option:focus-visible { outline: none; }
+.ui-option.active { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+
+.ui-search-trigger {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  height: var(--control-h, 38px); min-height: var(--control-h, 38px);
+  padding: 0 12px 0 4px; border: 1px solid #e2e8f0; border-radius: var(--control-radius, 10px);
+  background: #fff; cursor: text; transition: border-color .15s;
+}
+.ui-search-trigger:hover { border-color: #bfdbfe; }
+.ui-dropdown.open .ui-search-trigger,
+.ui-search-trigger:focus-within {
+  border-color: var(--focus-border, #2563eb);
+}
+.ui-search-input {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--control-font, 14px);
+  color: #111827;
+  padding: 0 8px;
+  min-width: 0;
+}
+.ui-search-input:focus,
+.ui-search-input:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+.ui-search-input::placeholder { color: #94a3b8; }
+.ui-search-menu { min-width: 100%; }
+.ui-search-empty { padding: 12px; text-align: center; color: #94a3b8; font-size: 13px; }
+
+/* Календарь */
+.ui-cal-menu { padding: 12px; max-height: none; overflow: visible; min-width: 280px; }
+.ui-cal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; font-size: 14px; font-weight: 600;
+}
+.ui-cal-nav {
+  width: 32px; height: 32px; border: 1px solid #e2e8f0; border-radius: 8px;
+  background: #f8fafc; font-size: 18px; cursor: pointer; color: #64748b;
+  display: grid; place-items: center; line-height: 1;
+}
+.ui-cal-nav:hover { background: #eff6ff; border-color: #bfdbfe; color: #2563eb; }
+.ui-cal-nav:focus,
+.ui-cal-nav:focus-visible,
+.ui-cal-day:focus,
+.ui-cal-day:focus-visible,
+.ui-time-slot:focus,
+.ui-time-slot:focus-visible { outline: none; }
+.ui-cal-weekdays {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+  margin-bottom: 6px; text-align: center; font-size: 11px; font-weight: 600; color: #94a3b8;
+}
+.ui-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.ui-cal-empty { aspect-ratio: 1; }
+.ui-cal-day {
+  aspect-ratio: 1; border: 0; border-radius: 8px; background: transparent;
+  font: inherit; font-size: 13px; cursor: pointer; color: #111827;
+  display: grid; place-items: center;
+}
+.ui-cal-day:hover { background: #f1f5f9; }
+.ui-cal-day.today { font-weight: 700; color: #2563eb; }
+.ui-cal-day.active { background: #2563eb; color: #fff; font-weight: 600; }
+.ui-cal-day.active:hover { background: #1d4ed8; }
+
+/* Время */
+.ui-time-menu { padding: 8px; max-height: 220px; }
+.ui-time-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.ui-time-slot {
+  padding: 8px 4px; border: 1px solid #e2e8f0; border-radius: 8px;
+  background: #fff; font: inherit; font-size: 13px; cursor: pointer; color: #111827;
+}
+.ui-time-slot:hover { border-color: #bfdbfe; background: #f8fafc; }
+.ui-time-slot.active { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; font-weight: 600; }

@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Архитектура системы учета занятий с MAX-ботом</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --text: #172033;
+      --muted: #5f6b7a;
+      --border: #d8dee8;
+      --accent: #2457c5;
+      --accent-soft: #eef3ff;
+      --code: #101828;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.6 "Segoe UI", Arial, sans-serif;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 24px 56px;
+    }
+
+    header {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.25;
+      margin: 0 0 14px;
+    }
+
+    h1 {
+      font-size: 30px;
+      max-width: 900px;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-top: 36px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h3 {
+      font-size: 18px;
+      margin-top: 24px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .pill {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid #d6e1ff;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 26px;
+      margin: 18px 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      background: #fbfcfe;
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: var(--surface);
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f0f3f8;
+      font-weight: 700;
+    }
+
+    code {
+      background: #eef1f6;
+      border-radius: 5px;
+      padding: 1px 5px;
+      color: var(--code);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.94em;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+      font: 13px/1.5 Consolas, "Courier New", monospace;
+      margin: 14px 0 22px;
+    }
+
+    ul, ol {
+      padding-left: 22px;
+      margin: 0 0 16px;
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 14px 16px;
+      border-radius: 10px;
+      margin: 16px 0;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      main {
+        max-width: none;
+        padding: 0;
+      }
+
+      header, .section {
+        border: 0;
+        border-radius: 0;
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Архитектура системы учета занятий с MAX-ботом, HR-сайтом и сайтом преподавателей</h1>
+    <p class="muted">Проектная документация по микросервисной архитектуре, базам данных, потокам данных, портам, Keycloak и технологическому стеку.</p>
+    <div class="meta">
+      <span class="pill">Версия 1.0</span>
+      <span class="pill">Дата: 09.06.2026</span>
+      <span class="pill">Backend: Python + FastAPI</span>
+      <span class="pill">Auth: Keycloak</span>
+      <span class="pill">Нагрузка: до 10 000 пользователей</span>
+    </div>
+  </header>
+
+  <section class="section">
+    <h2>1. Назначение Документа</h2>
+    <p>Документ описывает целевую архитектуру системы, состоящей из MAX-бота и двух web-сайтов: HR-сайта для учета сотрудников и групп, сайта преподавателей для расписания и занятий, а также MAX-бота для регистрации, уведомлений и быстрых пользовательских сценариев.</p>
+    <p>Документ не создает приложение и не содержит production-код. Это архитектурный артефакт для последующей реализации.</p>
+  </section>
+
+  <section class="section">
+    <h2>2. Бизнес-Контекст</h2>
+    <div class="grid">
+      <div class="card"><strong>MAX-бот</strong>Регистрация, выбор направления, уведомления, быстрый доступ к информации о занятиях.</div>
+      <div class="card"><strong>HR web-сайт</strong>Сотрудники, рабочие группы, направления, преподаватели, организационный учет и отчеты.</div>
+      <div class="card"><strong>Сайт преподавателей</strong>Группы, расписание, карточка занятия, отметка посещаемости и результатов.</div>
+      <div class="card"><strong>Keycloak</strong>SSO, OAuth2/OIDC, роли, JWT, service accounts и централизованное управление доступом.</div>
+    </div>
+
+    <h3>Участники</h3>
+    <table>
+      <thead>
+      <tr><th>Участник</th><th>Канал</th><th>Основные действия</th></tr>
+      </thead>
+      <tbody>
+      <tr><td>Пользователь / сотрудник</td><td>MAX-бот</td><td>Регистрация, выбор направления, получение уведомлений</td></tr>
+      <tr><td>HR</td><td>HR web-сайт</td><td>Управление сотрудниками, группами, направлениями и отчетами</td></tr>
+      <tr><td>Преподаватель</td><td>Teacher web-сайт</td><td>Просмотр расписания, проведение занятий, отметка участников</td></tr>
+      <tr><td>Система</td><td>Backend / интеграции</td><td>Проверки, запись данных, уведомления, аудит</td></tr>
+      <tr><td>Keycloak</td><td>Identity Provider</td><td>Авторизация, роли, токены, SSO</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>3. Разбор BPMN-Сценариев</h2>
+
+    <h3>3.1. Регистрация Через MAX-Бота</h3>
+    <p>Пользователь нажимает кнопку регистрации в MAX-боте. Бот передает событие backend-адаптеру, система проверяет пользователя, связывает MAX ID с профилем и Keycloak, сохраняет данные и отправляет информационное сообщение.</p>
+    <table>
+      <thead><tr><th>BPMN-шаг</th><th>Целевой компонент</th></tr></thead>
+      <tbody>
+      <tr><td>Нажать кнопку регистрации</td><td><code>max-bot-adapter</code></td></tr>
+      <tr><td>Запуск процесса регистрации</td><td><code>user-service</code></td></tr>
+      <tr><td>Проверка данных пользователя</td><td><code>user-service</code>, Keycloak</td></tr>
+      <tr><td>Выбор направления</td><td><code>group-service</code> или справочник направлений</td></tr>
+      <tr><td>Запись данных</td><td>PostgreSQL сервиса-владельца</td></tr>
+      <tr><td>Вывод сообщения</td><td><code>notification-service</code> через <code>max-bot-adapter</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>3.2. Создание Рабочей Группы</h3>
+    <p>HR создает рабочую группу, выбирает сотрудников и преподавателя, редактирует параметры, система проверяет дубли и сохраняет группу.</p>
+    <table>
+      <thead><tr><th>BPMN-шаг</th><th>Целевой компонент</th></tr></thead>
+      <tbody>
+      <tr><td>Открыть форму создания группы</td><td>HR web frontend</td></tr>
+      <tr><td>Получить список сотрудников</td><td><code>user-service</code></td></tr>
+      <tr><td>Выбрать сотрудников и преподавателя</td><td>HR web frontend, <code>group-service</code></td></tr>
+      <tr><td>Проверка дублей</td><td><code>group-service</code></td></tr>
+      <tr><td>Запись группы и состава</td><td><code>group-service</code> PostgreSQL</td></tr>
+      <tr><td>Информационное сообщение</td><td>Frontend notification + audit event</td></tr>
+      </tbody>
+    </table>
+
+    <h3>3.3. Расписание Занятий</h3>
+    <p>Преподаватель или HR выбирает группу, открывает расписание, редактирует занятия. Система проверяет конфликты времени, сохраняет расписание и публикует событие для уведомлений.</p>
+
+    <h3>3.4. Проведение И Учет Занятия</h3>
+    <p>Преподаватель открывает занятие, отмечает участников и результат. Attendance-сервис сохраняет факт занятия, публикует событие для аудита и уведомлений.</p>
+  </section>
+
+  <section class="section">
+    <h2>4. Архитектурные Принципы</h2>
+    <ol>
+      <li>Backend-сервисы разрабатываются на Python 3.12+ и FastAPI.</li>
+      <li>Авторизация и SSO централизованы в Keycloak.</li>
+      <li>Внешний доступ идет только через API Gateway / reverse proxy.</li>
+      <li>Сервисы stateless и масштабируются горизонтально.</li>
+      <li>Каждый микросервис владеет своей БД или отдельной PostgreSQL-схемой.</li>
+      <li>Межсервисные связи строятся через API и события, а не через прямой доступ к чужим таблицам.</li>
+      <li>Долгие операции, уведомления и синхронизации выполняются асинхронно через брокер сообщений.</li>
+      <li>Все критичные действия логируются в audit trail.</li>
+      <li>Система должна иметь мониторинг, трассировку, централизованные логи и алерты.</li>
+    </ol>
+    <div class="note">Практический старт: можно начать с малого числа сервисов или modular monolith, но сразу держать доменные границы так, чтобы позже безболезненно выделить микросервисы.</div>
+  </section>
+
+  <section class="section">
+    <h2>5. Целевая Микросервисная Архитектура</h2>
+    <pre>Пользователь MAX -> MAX Platform -> max-bot-adapter -> API Gateway
+HR -> HR Web App -> API Gateway
+Преподаватель -> Teacher Web App -> API Gateway
+
+API Gateway -> Keycloak
+API Gateway -> user-service
+API Gateway -> group-service
+API Gateway -> schedule-service
+API Gateway -> attendance-service
+API Gateway -> notification-service
+API Gateway -> audit-service
+
+user-service -> PostgreSQL users_db
+group-service -> PostgreSQL groups_db
+schedule-service -> PostgreSQL schedule_db
+attendance-service -> PostgreSQL attendance_db
+notification-service -> PostgreSQL notification_db
+audit-service -> PostgreSQL audit_db
+
+Redis используется для кэша, rate limiting и короткоживущих состояний.
+RabbitMQ/Kafka используется для событий и фоновых задач.</pre>
+
+    <h3>Компоненты</h3>
+    <table>
+      <thead><tr><th>Компонент</th><th>Назначение</th><th>Технологии</th></tr></thead>
+      <tbody>
+      <tr><td>HR Web App</td><td>Интерфейс HR, группы, сотрудники, справочники, отчеты</td><td>React, TypeScript, Vite, TanStack Query</td></tr>
+      <tr><td>Teacher Web App</td><td>Интерфейс преподавателя, расписание, занятия, отметки</td><td>React, TypeScript, Vite, TanStack Query</td></tr>
+      <tr><td>API Gateway</td><td>Единая точка входа, маршрутизация, rate limiting, JWT</td><td>Kong, Traefik, Nginx, Envoy или FastAPI gateway</td></tr>
+      <tr><td>Keycloak</td><td>SSO, OAuth2/OIDC, роли, клиенты, пользователи</td><td>Keycloak 25+</td></tr>
+      <tr><td>max-bot-adapter</td><td>Интеграция с MAX API, webhooks, команды бота</td><td>FastAPI, httpx</td></tr>
+      <tr><td>user-service</td><td>Профили, сотрудники, преподаватели, MAX ID</td><td>FastAPI, PostgreSQL</td></tr>
+      <tr><td>group-service</td><td>Рабочие группы, составы, направления, преподаватели</td><td>FastAPI, PostgreSQL</td></tr>
+      <tr><td>schedule-service</td><td>Расписание, занятия, конфликты времени, публикация</td><td>FastAPI, PostgreSQL</td></tr>
+      <tr><td>attendance-service</td><td>Факт занятий, посещаемость, статусы, подтверждения</td><td>FastAPI, PostgreSQL</td></tr>
+      <tr><td>notification-service</td><td>Уведомления в MAX, email, статусы доставки</td><td>FastAPI workers, RabbitMQ/Kafka</td></tr>
+      <tr><td>audit-service</td><td>Журнал действий и события безопасности</td><td>FastAPI, PostgreSQL</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>6. Порты И Сетевые Контуры</h2>
+    <table>
+      <thead><tr><th>Сервис</th><th>Внешний порт</th><th>Внутренний порт</th><th>Протокол</th><th>Доступ</th></tr></thead>
+      <tbody>
+      <tr><td>Nginx / Traefik</td><td>443</td><td>443</td><td>HTTPS</td><td>Internet / intranet</td></tr>
+      <tr><td>API Gateway</td><td>-</td><td>8000</td><td>HTTP/REST</td><td>Только reverse proxy</td></tr>
+      <tr><td>Keycloak</td><td>443 или 8443</td><td>8080</td><td>HTTPS/HTTP</td><td>Через reverse proxy</td></tr>
+      <tr><td>max-bot-adapter</td><td>-</td><td>8010</td><td>HTTP webhook</td><td>Gateway / MAX allowlist</td></tr>
+      <tr><td>user-service</td><td>-</td><td>8020</td><td>HTTP/REST</td><td>Внутренняя сеть</td></tr>
+      <tr><td>group-service</td><td>-</td><td>8030</td><td>HTTP/REST</td><td>Внутренняя сеть</td></tr>
+      <tr><td>schedule-service</td><td>-</td><td>8040</td><td>HTTP/REST</td><td>Внутренняя сеть</td></tr>
+      <tr><td>attendance-service</td><td>-</td><td>8050</td><td>HTTP/REST</td><td>Внутренняя сеть</td></tr>
+      <tr><td>notification-service</td><td>-</td><td>8060</td><td>HTTP/REST + workers</td><td>Внутренняя сеть</td></tr>
+      <tr><td>audit-service</td><td>-</td><td>8070</td><td>HTTP/REST</td><td>Внутренняя сеть</td></tr>
+      <tr><td>PostgreSQL</td><td>-</td><td>5432</td><td>TCP</td><td>Backend only</td></tr>
+      <tr><td>PgBouncer</td><td>-</td><td>6432</td><td>TCP</td><td>Backend -> PostgreSQL</td></tr>
+      <tr><td>Redis</td><td>-</td><td>6379</td><td>TCP</td><td>Backend only</td></tr>
+      <tr><td>RabbitMQ</td><td>-</td><td>5672</td><td>AMQP</td><td>Backend only</td></tr>
+      <tr><td>Kafka</td><td>-</td><td>9092</td><td>TCP</td><td>Backend only</td></tr>
+      <tr><td>Prometheus</td><td>-</td><td>9090</td><td>HTTP</td><td>Ops network</td></tr>
+      <tr><td>Grafana</td><td>443</td><td>3000</td><td>HTTPS/HTTP</td><td>Ops / admins</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>7. Авторизация И Keycloak</h2>
+    <p>Предлагаемый realm: <code>max-education</code>.</p>
+    <table>
+      <thead><tr><th>Client ID</th><th>Тип клиента</th><th>Назначение</th></tr></thead>
+      <tbody>
+      <tr><td><code>hr-web</code></td><td>Public + PKCE</td><td>Авторизация HR web-сайта</td></tr>
+      <tr><td><code>teacher-web</code></td><td>Public + PKCE</td><td>Авторизация сайта преподавателя</td></tr>
+      <tr><td><code>api-gateway</code></td><td>Confidential</td><td>Проверка токенов и service-to-service запросы</td></tr>
+      <tr><td><code>max-bot-adapter</code></td><td>Confidential</td><td>Технический клиент для bot backend</td></tr>
+      <tr><td><code>internal-services</code></td><td>Confidential</td><td>Service account для внутренних интеграций</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Роли</h3>
+    <table>
+      <thead><tr><th>Роль</th><th>Описание</th></tr></thead>
+      <tbody>
+      <tr><td><code>admin</code></td><td>Полный доступ к настройкам и справочникам</td></tr>
+      <tr><td><code>hr_manager</code></td><td>Управление сотрудниками, группами, отчетами</td></tr>
+      <tr><td><code>teacher</code></td><td>Доступ к своим группам, расписанию и занятиям</td></tr>
+      <tr><td><code>student</code> / <code>employee</code></td><td>Получение информации, регистрация, уведомления</td></tr>
+      <tr><td><code>auditor</code></td><td>Только чтение журналов и отчетов</td></tr>
+      <tr><td><code>service_account</code></td><td>Внутрисервисные операции</td></tr>
+      </tbody>
+    </table>
+
+    <pre>Web login flow:
+User -> Web App -> Keycloak OIDC Authorization Code + PKCE
+Keycloak -> Web App: access token + refresh token
+Web App -> API Gateway: Bearer JWT
+API Gateway -> Backend Service: request with user claims</pre>
+  </section>
+
+  <section class="section">
+    <h2>8. Модель Данных И Базы</h2>
+    <p>Основная транзакционная БД: PostgreSQL. На старте допустим один PostgreSQL-кластер с отдельными схемами на сервис. При росте нагрузки домены можно вынести в отдельные базы.</p>
+    <div class="note">Правило владения: сервис изменяет только свои таблицы. Другие сервисы получают данные через API или события. Межсервисные связи хранятся как UUID-ссылки, без физических foreign keys между разными БД.</div>
+
+    <h3>Users DB</h3>
+    <table>
+      <thead><tr><th>Таблица</th><th>Назначение</th><th>Ключевые поля</th></tr></thead>
+      <tbody>
+      <tr><td><code>users</code></td><td>Локальный профиль пользователя</td><td><code>id</code>, <code>keycloak_user_id</code>, <code>status</code>, <code>created_at</code></td></tr>
+      <tr><td><code>employee_profiles</code></td><td>HR-данные сотрудника</td><td><code>user_id</code>, <code>full_name</code>, <code>department</code>, <code>position</code></td></tr>
+      <tr><td><code>teacher_profiles</code></td><td>Профиль преподавателя</td><td><code>user_id</code>, <code>specialization</code>, <code>active</code></td></tr>
+      <tr><td><code>user_external_identities</code></td><td>Связь с MAX и другими системами</td><td><code>user_id</code>, <code>provider</code>, <code>external_user_id</code>, <code>verified_at</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Groups DB</h3>
+    <table>
+      <thead><tr><th>Таблица</th><th>Назначение</th><th>Ключевые поля</th></tr></thead>
+      <tbody>
+      <tr><td><code>directions</code></td><td>Направления обучения/работы</td><td><code>id</code>, <code>name</code>, <code>active</code></td></tr>
+      <tr><td><code>work_groups</code></td><td>Рабочие группы</td><td><code>id</code>, <code>direction_id</code>, <code>name</code>, <code>status</code></td></tr>
+      <tr><td><code>group_members</code></td><td>Участники группы</td><td><code>group_id</code>, <code>user_id</code>, <code>member_status</code></td></tr>
+      <tr><td><code>group_teachers</code></td><td>Преподаватели группы</td><td><code>group_id</code>, <code>teacher_user_id</code>, <code>role</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Schedule DB</h3>
+    <table>
+      <thead><tr><th>Таблица</th><th>Назначение</th><th>Ключевые поля</th></tr></thead>
+      <tbody>
+      <tr><td><code>schedules</code></td><td>Расписание группы</td><td><code>id</code>, <code>group_id</code>, <code>status</code>, <code>timezone</code></td></tr>
+      <tr><td><code>lessons</code></td><td>Конкретные занятия</td><td><code>id</code>, <code>schedule_id</code>, <code>group_id</code>, <code>teacher_user_id</code>, <code>starts_at</code>, <code>ends_at</code></td></tr>
+      <tr><td><code>lesson_locations</code></td><td>Место или online-ссылка</td><td><code>lesson_id</code>, <code>type</code>, <code>address</code>, <code>url</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Attendance DB</h3>
+    <table>
+      <thead><tr><th>Таблица</th><th>Назначение</th><th>Ключевые поля</th></tr></thead>
+      <tbody>
+      <tr><td><code>lesson_sessions</code></td><td>Факт проведения занятия</td><td><code>id</code>, <code>lesson_id</code>, <code>started_at</code>, <code>finished_at</code>, <code>status</code></td></tr>
+      <tr><td><code>attendance_records</code></td><td>Отметки участников</td><td><code>session_id</code>, <code>user_id</code>, <code>status</code>, <code>marked_by</code></td></tr>
+      <tr><td><code>lesson_results</code></td><td>Итоговые данные занятия</td><td><code>session_id</code>, <code>summary</code>, <code>materials_url</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Логические Связи</h3>
+    <pre>users 1:N user_external_identities
+directions 1:N work_groups
+work_groups 1:N group_members
+work_groups 1:N group_teachers
+work_groups 1:N lessons
+lessons 1:N lesson_sessions
+lesson_sessions 1:N attendance_records
+users 1:N attendance_records
+users 1:N notification_jobs</pre>
+  </section>
+
+  <section class="section">
+    <h2>9. Событийная Модель</h2>
+    <table>
+      <thead><tr><th>Событие</th><th>Источник</th><th>Получатели</th><th>Назначение</th></tr></thead>
+      <tbody>
+      <tr><td><code>user.registered</code></td><td><code>user-service</code></td><td><code>notification-service</code>, <code>audit-service</code></td><td>Приветствие, аудит</td></tr>
+      <tr><td><code>user.max_identity_linked</code></td><td><code>user-service</code></td><td><code>notification-service</code></td><td>Подтверждение привязки MAX</td></tr>
+      <tr><td><code>group.created</code></td><td><code>group-service</code></td><td><code>notification-service</code>, <code>audit-service</code></td><td>Уведомление участников</td></tr>
+      <tr><td><code>group.member_added</code></td><td><code>group-service</code></td><td><code>notification-service</code>, <code>schedule-service</code></td><td>Обновление read-моделей</td></tr>
+      <tr><td><code>schedule.published</code></td><td><code>schedule-service</code></td><td><code>notification-service</code></td><td>Рассылка расписания</td></tr>
+      <tr><td><code>lesson.completed</code></td><td><code>attendance-service</code></td><td><code>notification-service</code>, <code>audit-service</code></td><td>Итоги занятия</td></tr>
+      <tr><td><code>attendance.changed</code></td><td><code>attendance-service</code></td><td><code>audit-service</code></td><td>История изменений</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>10. Потоки Данных</h2>
+    <h3>Регистрация Через MAX</h3>
+    <pre>MAX User -> MAX Platform: нажимает Регистрация
+MAX Platform -> max-bot-adapter: webhook event
+max-bot-adapter -> API Gateway: POST /bot/events
+API Gateway -> user-service: start registration
+user-service -> Users DB: search external MAX identity
+user-service -> Keycloak: create or link user
+user-service -> notification-service: welcome notification
+notification-service -> max-bot-adapter: send MAX message</pre>
+
+    <h3>Создание Рабочей Группы</h3>
+    <pre>HR -> HR Web: открыть Создать группу
+HR Web -> user-service: получить сотрудников
+HR Web -> group-service: POST /groups
+group-service -> Groups DB: check duplicates and save
+group-service -> Broker: group.created
+notification-service -> MAX: уведомить участников</pre>
+
+    <h3>Публикация Расписания</h3>
+    <pre>Teacher/HR -> Web App: редактирует расписание
+Web App -> schedule-service: PUT /schedules/{id}
+schedule-service -> Schedule DB: validate conflicts and save
+schedule-service -> Broker: schedule.published
+notification-service -> MAX: создать задания уведомлений</pre>
+
+    <h3>Учет Занятия</h3>
+    <pre>Teacher -> Teacher Web: открыть занятие
+Teacher Web -> attendance-service: загрузить форму
+Teacher -> Teacher Web: сохранить отметки
+attendance-service -> Attendance DB: validate and persist records
+attendance-service -> Broker: attendance.changed
+audit-service -> Audit DB: записать событие</pre>
+  </section>
+
+  <section class="section">
+    <h2>11. API-Контракты Верхнего Уровня</h2>
+    <table>
+      <thead><tr><th>Endpoint</th><th>Метод</th><th>Сервис</th><th>Назначение</th></tr></thead>
+      <tbody>
+      <tr><td><code>/api/v1/bot/events</code></td><td>POST</td><td><code>max-bot-adapter</code></td><td>Прием событий от MAX</td></tr>
+      <tr><td><code>/api/v1/users/me</code></td><td>GET</td><td><code>user-service</code></td><td>Текущий профиль</td></tr>
+      <tr><td><code>/api/v1/users</code></td><td>GET</td><td><code>user-service</code></td><td>Список пользователей для HR</td></tr>
+      <tr><td><code>/api/v1/groups</code></td><td>GET/POST</td><td><code>group-service</code></td><td>Получение и создание групп</td></tr>
+      <tr><td><code>/api/v1/groups/{id}/members</code></td><td>GET/POST</td><td><code>group-service</code></td><td>Участники группы</td></tr>
+      <tr><td><code>/api/v1/schedules</code></td><td>GET/POST</td><td><code>schedule-service</code></td><td>Расписания</td></tr>
+      <tr><td><code>/api/v1/lessons/{id}</code></td><td>GET/PUT</td><td><code>schedule-service</code></td><td>Карточка занятия</td></tr>
+      <tr><td><code>/api/v1/lessons/{id}/attendance</code></td><td>GET/POST</td><td><code>attendance-service</code></td><td>Посещаемость</td></tr>
+      <tr><td><code>/api/v1/audit/events</code></td><td>GET</td><td><code>audit-service</code></td><td>Журнал действий</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>12. Масштабирование На 10 000 Пользователей</h2>
+    <p>10 000 пользователей не означает 10 000 одновременных запросов. Основные пики: утренний вход и просмотр расписания, массовые уведомления, отметка занятий преподавателями, HR-операции и фоновые задачи.</p>
+    <table>
+      <thead><tr><th>Слой</th><th>Стартовая конфигурация</th><th>Масштабирование</th></tr></thead>
+      <tbody>
+      <tr><td>API Gateway</td><td>2 replicas</td><td>HPA по RPS/CPU</td></tr>
+      <tr><td>FastAPI service</td><td>2-3 replicas на сервис</td><td>HPA по CPU, latency, queue depth</td></tr>
+      <tr><td>PostgreSQL</td><td>Primary + replica</td><td>Read replicas, partitioning, PgBouncer</td></tr>
+      <tr><td>Redis</td><td>3 nodes</td><td>Redis Sentinel или Cluster</td></tr>
+      <tr><td>RabbitMQ</td><td>3 nodes</td><td>Quorum queues</td></tr>
+      <tr><td>Observability</td><td>Отдельный контур</td><td>Retention и sampling</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Backend</h3>
+    <ul>
+      <li>FastAPI через <code>gunicorn</code> + <code>uvicorn-worker</code> или нативный <code>uvicorn</code>.</li>
+      <li>Асинхронные DB-драйверы и HTTP-клиенты.</li>
+      <li>Таймауты на все внешние вызовы.</li>
+      <li>Idempotency keys для повторных команд от MAX и frontend.</li>
+      <li>Pagination и фильтры для списков.</li>
+      <li>Фоновые задачи выносить в отдельные worker pods.</li>
+    </ul>
+
+    <h3>PostgreSQL</h3>
+    <ul>
+      <li>UUID primary keys.</li>
+      <li>Индексы по внешним идентификаторам, датам и статусам.</li>
+      <li>PgBouncer для контроля соединений.</li>
+      <li>Read replicas для отчетов.</li>
+      <li>Partitioning для audit, notification и attendance history.</li>
+      <li>Backups + point-in-time recovery.</li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <h2>13. Отказоустойчивость И Безопасность</h2>
+    <table>
+      <thead><tr><th>Риск</th><th>Механизм защиты</th></tr></thead>
+      <tbody>
+      <tr><td>MAX API временно недоступен</td><td>Retry с backoff, DLQ, повторная отправка</td></tr>
+      <tr><td>Keycloak недоступен</td><td>Кэш JWKS, деградация только для уже выданных JWT</td></tr>
+      <tr><td>PostgreSQL перегружен</td><td>PgBouncer, индексы, лимиты запросов, read replicas</td></tr>
+      <tr><td>Дубли webhook-событий</td><td>Idempotency table по external event ID</td></tr>
+      <tr><td>Ошибки уведомлений</td><td>Retry policy, DLQ, таблица delivery attempts</td></tr>
+      <tr><td>Массовая рассылка создает пик</td><td>Очереди, throttling, батчинг</td></tr>
+      </tbody>
+    </table>
+
+    <ul>
+      <li>TLS для всего внешнего трафика.</li>
+      <li>JWT validation на Gateway и проверка прав в сервисах.</li>
+      <li>RBAC через Keycloak roles + domain-level permissions.</li>
+      <li>PKCE для frontend-клиентов.</li>
+      <li>Service accounts для backend-to-backend.</li>
+      <li>Secrets хранить в Kubernetes Secrets, Vault или облачном Secret Manager.</li>
+      <li>Audit для изменения групп, расписаний, посещаемости и ролей.</li>
+      <li>Rate limiting на login, bot webhook и публичные endpoint.</li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <h2>14. Наблюдаемость</h2>
+    <p>Минимальный production-набор: OpenTelemetry SDK, OpenTelemetry Collector, Prometheus, Grafana, Loki или ELK/OpenSearch, Sentry и Alertmanager.</p>
+    <table>
+      <thead><tr><th>Метрика</th><th>Назначение</th></tr></thead>
+      <tbody>
+      <tr><td><code>http_requests_total</code></td><td>RPS по сервисам</td></tr>
+      <tr><td><code>http_request_duration_seconds</code></td><td>p95/p99 latency</td></tr>
+      <tr><td><code>db_query_duration_seconds</code></td><td>Медленные запросы</td></tr>
+      <tr><td><code>queue_depth</code></td><td>Накопление задач</td></tr>
+      <tr><td><code>notification_delivery_failures_total</code></td><td>Ошибки доставки</td></tr>
+      <tr><td><code>keycloak_token_validation_errors_total</code></td><td>Проблемы авторизации</td></tr>
+      <tr><td><code>bot_webhook_duplicates_total</code></td><td>Дубли событий MAX</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>15. Технологический Стек</h2>
+    <table>
+      <thead><tr><th>Область</th><th>Рекомендуемые технологии</th></tr></thead>
+      <tbody>
+      <tr><td>Backend</td><td>Python 3.12+, FastAPI, Pydantic v2, SQLAlchemy 2.0 async, Alembic, asyncpg, httpx</td></tr>
+      <tr><td>Auth</td><td>Keycloak, OAuth2/OIDC, JWT, PKCE, service accounts</td></tr>
+      <tr><td>Frontend</td><td>React 18+, TypeScript, Vite, TanStack Query, React Hook Form, Zod</td></tr>
+      <tr><td>Database</td><td>PostgreSQL 16+, PgBouncer, read replicas, partitioning</td></tr>
+      <tr><td>Cache</td><td>Redis 7+, Redis Sentinel или Cluster</td></tr>
+      <tr><td>Broker</td><td>RabbitMQ 3.13+ для первого релиза; Kafka при необходимости event streaming</td></tr>
+      <tr><td>Infrastructure</td><td>Docker, Kubernetes, Helm, Terraform, Nginx/Traefik/Envoy</td></tr>
+      <tr><td>Observability</td><td>OpenTelemetry, Prometheus, Grafana, Loki, Sentry</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>16. Список Библиотек</h2>
+    <h3>Python / FastAPI</h3>
+    <table>
+      <thead><tr><th>Библиотека</th><th>Назначение</th></tr></thead>
+      <tbody>
+      <tr><td><code>fastapi</code></td><td>Web API</td></tr>
+      <tr><td><code>uvicorn</code></td><td>ASGI server</td></tr>
+      <tr><td><code>gunicorn</code></td><td>Process manager для Linux production</td></tr>
+      <tr><td><code>pydantic</code>, <code>pydantic-settings</code></td><td>DTO, validation, конфигурация</td></tr>
+      <tr><td><code>sqlalchemy[asyncio]</code>, <code>asyncpg</code>, <code>alembic</code></td><td>ORM, PostgreSQL, миграции</td></tr>
+      <tr><td><code>httpx</code></td><td>Внешние HTTP-запросы</td></tr>
+      <tr><td><code>PyJWT</code> или <code>python-jose</code>, <code>authlib</code></td><td>JWT и OAuth2/OIDC</td></tr>
+      <tr><td><code>redis</code></td><td>Redis async client</td></tr>
+      <tr><td><code>aio-pika</code></td><td>RabbitMQ async client</td></tr>
+      <tr><td><code>aiokafka</code></td><td>Kafka client, если выбран Kafka</td></tr>
+      <tr><td><code>celery</code>, <code>dramatiq</code> или <code>arq</code></td><td>Фоновые задачи</td></tr>
+      <tr><td><code>structlog</code></td><td>Структурированные логи</td></tr>
+      <tr><td><code>opentelemetry-api</code>, <code>opentelemetry-sdk</code></td><td>Трассировка</td></tr>
+      <tr><td><code>prometheus-client</code>, <code>sentry-sdk</code></td><td>Метрики и error tracking</td></tr>
+      <tr><td><code>tenacity</code>, <code>orjson</code></td><td>Retry и быстрая JSON-сериализация</td></tr>
+      <tr><td><code>pytest</code>, <code>pytest-asyncio</code>, <code>testcontainers</code></td><td>Тестирование</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Frontend</h3>
+    <table>
+      <thead><tr><th>Библиотека</th><th>Назначение</th></tr></thead>
+      <tbody>
+      <tr><td><code>react</code>, <code>typescript</code>, <code>vite</code></td><td>UI, типизация, сборка</td></tr>
+      <tr><td><code>@tanstack/react-query</code></td><td>Server state</td></tr>
+      <tr><td><code>@tanstack/router</code> или <code>react-router-dom</code></td><td>Routing</td></tr>
+      <tr><td><code>react-hook-form</code>, <code>zod</code></td><td>Формы и validation</td></tr>
+      <tr><td><code>oidc-client-ts</code> или <code>keycloak-js</code></td><td>OIDC login</td></tr>
+      <tr><td><code>axios</code> или <code>ky</code></td><td>HTTP client</td></tr>
+      <tr><td><code>date-fns</code></td><td>Работа с датами</td></tr>
+      <tr><td><code>@sentry/react</code></td><td>Error tracking</td></tr>
+      <tr><td><code>vitest</code>, <code>playwright</code></td><td>Unit и E2E тесты</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>17. Рекомендации По Реализации Этапами</h2>
+    <h3>Этап 1. Архитектурный MVP</h3>
+    <ul>
+      <li>Keycloak realm, клиенты и роли.</li>
+      <li>HR web: сотрудники и группы.</li>
+      <li>Teacher web: группы и расписание.</li>
+      <li>MAX-бот: регистрация и уведомления.</li>
+      <li>FastAPI backend с модульными границами.</li>
+      <li>PostgreSQL, Redis, RabbitMQ.</li>
+    </ul>
+
+    <h3>Этап 2. Production Hardening</h3>
+    <ul>
+      <li>Разделение сервисов по доменам.</li>
+      <li>Observability, audit, retry/DLQ.</li>
+      <li>Нагрузочное тестирование.</li>
+      <li>CI/CD и окружения dev/stage/prod.</li>
+    </ul>
+
+    <h3>Этап 3. Масштабирование</h3>
+    <ul>
+      <li>Kubernetes HPA.</li>
+      <li>Read replicas.</li>
+      <li>Partitioning больших таблиц.</li>
+      <li>Отдельная аналитическая read-модель.</li>
+      <li>Kafka, если появится потребность в event streaming.</li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <h2>18. Итоговая Рекомендация</h2>
+    <p>Для заданной системы оптимальна архитектура с FastAPI-сервисами, Keycloak как единой системой идентификации, PostgreSQL как основной транзакционной БД, Redis для кэша и rate limiting, RabbitMQ для фоновых событий и уведомлений, а также полноценной наблюдаемостью через OpenTelemetry, Prometheus, Grafana и Loki.</p>
+    <p>При нагрузке до 10 000 пользователей критично не количество микросервисов, а правильные границы данных, отсутствие синхронных тяжелых цепочек, устойчивые очереди уведомлений, индексы в PostgreSQL, connection pooling и горизонтальное масштабирование stateless-компонентов.</p>
+  </section>
+</main>
+</body>
+</html>

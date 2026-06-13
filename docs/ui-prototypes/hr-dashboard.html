@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HR — MAX RASS</title>
+  <style>
+    :root {
+      --bg: #f4f7fb; --surface: #fff; --primary: #2563eb; --primary-dark: #1d4ed8;
+      --text: #111827; --muted: #64748b; --border: #e2e8f0;
+      --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: Inter, "Segoe UI", Arial, sans-serif; color: var(--text);
+      background: radial-gradient(circle at 0% 0%, rgba(37,99,235,.12), transparent 40%),
+        radial-gradient(circle at 100% 100%, rgba(124,58,237,.08), transparent 35%), var(--bg);
+    }
+    .page { max-width: 1140px; margin: 0 auto; padding: 24px 16px 48px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+    .header h1 { margin: 0; font-size: 22px; }
+    .header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+    .user { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+    .avatar { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; background: #dbeafe; color: var(--primary-dark); font-size: 12px; font-weight: 700; }
+    .user span { color: var(--muted); }
+    .logout { color: var(--primary); font-size: 13px; font-weight: 600; text-decoration: none; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+    .stat, .card { border: 1px solid var(--border); border-radius: 16px; background: var(--surface); box-shadow: 0 12px 40px rgba(15,23,42,.05); }
+    .stat { padding: 14px 16px; }
+    .stat span { color: var(--muted); font-size: 13px; }
+    .stat strong { display: block; margin-top: 4px; font-size: 22px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .tab { padding: 8px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; }
+    .tab.active { border-color: var(--primary); background: #eff6ff; color: var(--primary-dark); }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; align-items: center; }
+    .toolbar input, .toolbar select { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font: inherit; font-size: 14px; background: #fff; }
+    .toolbar input { flex: 1; min-width: 180px; }
+    .toolbar input:focus, .toolbar select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+    .card { padding: 20px; margin-bottom: 16px; }
+    .card h2 { margin: 0 0 14px; font-size: 18px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { padding: 0 8px 10px; color: var(--muted); font-size: 12px; font-weight: 600; text-align: left; }
+    td { padding: 10px 8px; border-top: 1px solid var(--border); vertical-align: middle; }
+    .tag { display: inline-block; padding: 3px 8px; border-radius: 8px; background: #eff6ff; color: var(--primary-dark); font-size: 11px; font-weight: 600; }
+    .tag.green { background: #dcfce7; color: #166534; }
+    .tag.yellow { background: #fef3c7; color: #92400e; }
+    .tag.gray { background: #f1f5f9; color: #475569; }
+    .btn { padding: 10px 16px; border: 0; border-radius: 11px; background: var(--primary); color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .btn:hover { background: var(--primary-dark); }
+    .btn.secondary { background: #fff; color: var(--text); border: 1px solid var(--border); }
+    .btn.small { padding: 6px 10px; font-size: 12px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 360px; gap: 16px; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; }
+    .field input, .field select, .field textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font: inherit; font-size: 14px; }
+    .member-picker { max-height: 160px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; padding: 8px; }
+    .member-picker label { display: flex; gap: 8px; padding: 6px 4px; font-weight: 400; font-size: 13px; cursor: pointer; }
+    .pagination { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; align-items: center; }
+    .pagination button { min-width: 36px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
+    .pagination button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .pagination span { color: var(--muted); font-size: 13px; margin-right: 8px; }
+    .group-list { display: grid; gap: 10px; }
+    .group-item { display: flex; justify-content: space-between; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: #fafbfc; }
+    .group-item strong { display: block; margin-bottom: 4px; }
+    .group-item span { color: var(--muted); font-size: 13px; }
+    .direction-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .direction-row:last-child { border-bottom: 0; }
+    .toast { margin-top: 12px; padding: 12px; border-radius: 10px; background: #eff6ff; color: var(--primary-dark); font-size: 13px; display: none; }
+    .toast.show { display: block; }
+    .empty { color: var(--muted); font-size: 14px; padding: 24px 0; text-align: center; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 480px) { .stats { grid-template-columns: 1fr; } table { display: block; overflow-x: auto; white-space: nowrap; } .toolbar input { min-width: 100%; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div><h1>HR-панель</h1><p>Сотрудники, группы, направления</p></div>
+      <div class="user">
+        <div class="avatar">АК</div>
+        <div>Анна Крылова<br><span>HR</span></div>
+        <a class="logout" href="auth.html">Выйти</a>
+      </div>
+    </header>
+
+    <section class="stats" id="stats"></section>
+
+    <nav class="tabs" id="tabs">
+      <button type="button" class="tab active" data-tab="employees">Сотрудники</button>
+      <button type="button" class="tab" data-tab="groups">Группы</button>
+      <button type="button" class="tab" data-tab="directions">Направления</button>
+    </nav>
+
+    <section class="panel active" id="panel-employees">
+      <div class="card">
+        <h2>Сотрудники</h2>
+        <div class="toolbar">
+          <input type="search" id="searchEmployees" placeholder="Поиск по имени или email">
+          <select id="filterRole"><option value="">Все роли</option><option value="teacher">Преподаватель</option><option value="curator">Куратор</option><option value="employee">Сотрудник</option></select>
+          <select id="filterDirection"><option value="">Все направления</option></select>
+          <select id="filterStatus"><option value="">Все статусы</option><option value="active">Активен</option><option value="reserve">Резерв</option><option value="pending">Ожидает</option></select>
+          <button type="button" class="btn secondary" id="exportBtn">Экспорт CSV</button>
+        </div>
+        <div id="employeesTable"></div>
+        <div class="pagination" id="employeesPagination"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-groups">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Рабочие группы (<span id="groupListCount">0</span>)</h2>
+          <div class="toolbar">
+            <input type="search" id="searchGroups" placeholder="Поиск группы">
+            <select id="filterGroupDirection"><option value="">Все направления</option></select>
+          </div>
+          <div class="group-list" id="groupsList"></div>
+        </div>
+        <div class="card">
+          <h2>Создать группу</h2>
+          <form id="createGroupForm">
+            <div class="field"><label for="newGroupName">Название</label><input id="newGroupName" required placeholder="Backend-25"></div>
+            <div class="field"><label for="newGroupDirection">Направление</label><select id="newGroupDirection" required></select></div>
+            <div class="field"><label for="newGroupTeacher">Преподаватель</label><select id="newGroupTeacher" required></select></div>
+            <div class="field"><label>Участники</label><div class="member-picker" id="memberPicker"></div></div>
+            <button type="submit" class="btn">Создать группу</button>
+          </form>
+          <div class="toast" id="toast"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-directions">
+      <div class="card">
+        <h2>Направления</h2>
+        <div id="directionsList"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+(function () {
+  "use strict";
+
+  const DIRECTIONS = [
+    "Frontend", "Backend", "Data Analytics", "UX/UI Design",
+    "DevOps", "Mobile", "QA", "Project Management"
+  ];
+
+  const FIRST = ["Иван","Алексей","Дмитрий","Сергей","Андрей","Михаил","Никита","Павел","Артём","Максим","Егор","Роман","Владимир","Кирилл","Олег","Анна","Мария","Елена","Ольга","Наталья","Татьяна","Ирина","Светлана","Екатерина","Виктория","Полина","Алина","Дарья","Юлия","Ксения","Вероника","Анастасия","Людмила","Галина","Надежда","Валерия","София","Кристина","Лариса","Жанна"];
+  const LAST = ["Иванов","Петров","Сидоров","Смирнов","Кузнецов","Попов","Васильев","Соколов","Михайлов","Новikov","Фёдоров","Морозов","Волков","Алексеev","Лебедev","Семёnov","Егорov","Павlov","Козlov","Степanov","Никolaev","Орlov","Андreev","Макарov","Никитin","Захарov","Зайcev","Соловьёv","Борisov","Яковlev","Григорьev","Романov","Воробьёv","Сергеev","Куликov","Медведev","Ершov","Комарov","Белov","Тарасов"];
+
+  function seededRandom(seed) {
+    let s = seed;
+    return function () {
+      s = (s * 16807 + 0) % 2147483647;
+      return (s - 1) / 2147483646;
+    };
+  }
+
+  function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+
+  function buildEmbeddedData() {
+    const rng = seededRandom(42);
+    const users = [];
+    let id = 1;
+
+    for (let i = 0; i < 18; i++) {
+      const fn = pick(rng, FIRST), ln = pick(rng, LAST);
+      users.push({
+        id: id++, firstName: fn, lastName: ln,
+        role: "teacher", direction: pick(rng, DIRECTIONS),
+        groupId: null, status: "active",
+        email: fn.toLowerCase() + "." + ln.toLowerCase() + "@company.ru",
+        load: 60 + Math.floor(rng() * 35)
+      });
+    }
+    for (let i = 0; i < 12; i++) {
+      const fn = pick(rng, FIRST), ln = pick(rng, LAST);
+      users.push({
+        id: id++, firstName: fn, lastName: ln,
+        role: "curator", direction: pick(rng, DIRECTIONS),
+        groupId: null, status: rng() > 0.15 ? "active" : "reserve",
+        email: fn.toLowerCase() + "." + ln.toLowerCase() + "@company.ru",
+        load: 40 + Math.floor(rng() * 40)
+      });
+    }
+    while (users.length < 200) {
+      const fn = pick(rng, FIRST), ln = pick(rng, LAST);
+      const st = rng() > 0.92 ? "pending" : (rng() > 0.88 ? "reserve" : "active");
+      users.push({
+        id: id++, firstName: fn, lastName: ln,
+        role: "employee", direction: pick(rng, DIRECTIONS),
+        groupId: null, status: st,
+        email: fn.toLowerCase() + "." + ln.toLowerCase() + "@company.ru",
+        load: Math.floor(rng() * 100)
+      });
+    }
+
+    const groupNames = [
+      "Frontend-24","Frontend-25","Backend-22","Backend-24","Backend-26",
+      "DA-11","DA-12","DA-14","Design-08","Design-09","Design-11",
+      "DevOps-03","DevOps-04","Mobile-07","Mobile-09","QA-05","QA-06",
+      "PM-02","PM-03","Fullstack-15"
+    ];
+    const groups = [];
+    const teachers = users.filter(u => u.role === "teacher");
+    const employees = users.filter(u => u.role === "employee");
+
+    groupNames.forEach((name, gi) => {
+      const direction = DIRECTIONS[gi % DIRECTIONS.length];
+      const teacher = teachers[gi % teachers.length];
+      const memberCount = 8 + (gi % 7);
+      const members = [];
+      for (let m = 0; m < memberCount; m++) {
+        const idx = (gi * 9 + m) % employees.length;
+        if (!members.includes(employees[idx].id)) members.push(employees[idx].id);
+      }
+      members.forEach(uid => {
+        const u = users.find(x => x.id === uid);
+        if (u) { u.groupId = gi + 1; u.direction = direction; u.status = "active"; }
+      });
+      groups.push({
+        id: gi + 1, name, direction,
+        teacherId: teacher.id,
+        memberIds: members.slice(),
+        status: gi % 5 === 0 ? "forming" : "active"
+      });
+    });
+
+    return { users, groups, directions: DIRECTIONS };
+  }
+
+  const DATA = buildEmbeddedData();
+  const PAGE_SIZE = 25;
+
+  const state = {
+    tab: "employees",
+    empPage: 1,
+    empSearch: "",
+    empRole: "",
+    empDirection: "",
+    empStatus: "",
+    groupSearch: "",
+    groupDirection: ""
+  };
+
+  const $ = (sel) => document.querySelector(sel);
+  const roleLabel = { teacher: "Преподаватель", curator: "Куратор", employee: "Сотрудник" };
+  const statusLabel = { active: "активен", reserve: "резерв", pending: "ожидает" };
+  const statusClass = { active: "green", reserve: "yellow", pending: "gray" };
+
+  function fullName(u) { return u.firstName + " " + u.lastName; }
+  function initials(u) { return (u.firstName[0] + u.lastName[0]).toUpperCase(); }
+  function groupName(gid) {
+    const g = DATA.groups.find(x => x.id === gid);
+    return g ? g.name : "—";
+  }
+  function teacherName(g) {
+    const t = DATA.users.find(x => x.id === g.teacherId);
+    return t ? fullName(t) : "—";
+  }
+
+  function showToast(msg) {
+    const t = $("#toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 4000);
+  }
+
+  function filteredEmployees() {
+    const q = state.empSearch.toLowerCase();
+    return DATA.users.filter(u => {
+      if (state.empRole && u.role !== state.empRole) return false;
+      if (state.empDirection && u.direction !== state.empDirection) return false;
+      if (state.empStatus && u.status !== state.empStatus) return false;
+      if (q && !fullName(u).toLowerCase().includes(q) && !u.email.includes(q)) return false;
+      return true;
+    });
+  }
+
+  function renderStats() {
+    const inGroup = DATA.users.filter(u => u.groupId).length;
+    const teachers = DATA.users.filter(u => u.role === "teacher").length;
+    $("#stats").innerHTML = [
+      ["Сотрудников", DATA.users.length],
+      ["Групп", DATA.groups.length],
+      ["В группах", inGroup],
+      ["Преподавателей", teachers]
+    ].map(([l, v]) => `<article class="stat"><span>${l}</span><strong>${v}</strong></article>`).join("");
+  }
+
+  function renderEmployees() {
+    const list = filteredEmployees();
+    const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (state.empPage > pages) state.empPage = pages;
+    const slice = list.slice((state.empPage - 1) * PAGE_SIZE, state.empPage * PAGE_SIZE);
+
+    $("#employeesTable").innerHTML = slice.length ? `
+      <table><thead><tr>
+        <th>ID</th><th>ФИО</th><th>Роль</th><th>Направление</th><th>Группа</th><th>Загрузка</th><th>Статус</th>
+      </tr></thead><tbody>
+      ${slice.map(u => `<tr>
+        <td>${u.id}</td>
+        <td>${fullName(u)}<br><span style="color:var(--muted);font-size:12px">${u.email}</span></td>
+        <td>${roleLabel[u.role]}</td>
+        <td>${u.direction}</td>
+        <td>${groupName(u.groupId)}</td>
+        <td>${u.load}%</td>
+        <td><span class="tag ${statusClass[u.status]}">${statusLabel[u.status]}</span></td>
+      </tr>`).join("")}
+      </tbody></table>` : `<div class="empty">Ничего не найдено</div>`;
+
+    let pag = `<span>${list.length} записей · стр. ${state.empPage}/${pages}</span>`;
+    for (let p = 1; p <= pages; p++) {
+      if (pages > 7 && p > 2 && p < pages - 1 && Math.abs(p - state.empPage) > 1) {
+        if (p === 3 || p === pages - 2) pag += `<span>…</span>`;
+        continue;
+      }
+      pag += `<button type="button" class="${p === state.empPage ? "active" : ""}" data-page="${p}">${p}</button>`;
+    }
+    $("#employeesPagination").innerHTML = pag;
+    $("#employeesPagination").querySelectorAll("[data-page]").forEach(btn => {
+      btn.addEventListener("click", () => { state.empPage = +btn.dataset.page; renderEmployees(); });
+    });
+  }
+
+  function filteredGroups() {
+    const q = state.groupSearch.toLowerCase();
+    return DATA.groups.filter(g => {
+      if (state.groupDirection && g.direction !== state.groupDirection) return false;
+      if (q && !g.name.toLowerCase().includes(q) && !g.direction.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }
+
+  function renderGroups() {
+    const list = filteredGroups();
+    $("#groupListCount").textContent = list.length;
+    $("#groupsList").innerHTML = list.length ? list.map(g => `
+      <article class="group-item">
+        <div>
+          <strong>${g.name}</strong>
+          <span>${g.direction} · ${g.memberIds.length} чел. · ${teacherName(g)}</span>
+        </div>
+        <span class="tag ${g.status === "active" ? "green" : "yellow"}">${g.status === "active" ? "активна" : "формируется"}</span>
+      </article>`).join("") : `<div class="empty">Группы не найдены</div>`;
+  }
+
+  function renderDirections() {
+    $("#directionsList").innerHTML = DATA.directions.map(d => {
+      const gr = DATA.groups.filter(g => g.direction === d);
+      const us = DATA.users.filter(u => u.direction === d);
+      const em = us.filter(u => u.role === "employee").length;
+      return `<div class="direction-row">
+        <div><strong>${d}</strong><br><span style="color:var(--muted);font-size:13px">${gr.length} групп · ${em} сотрудников</span></div>
+        <span class="tag">${gr.length} групп</span>
+      </div>`;
+    }).join("");
+  }
+
+  function fillSelects() {
+    const dirOpts = DATA.directions.map(d => `<option value="${d}">${d}</option>`).join("");
+    $("#filterDirection").innerHTML = `<option value="">Все направления</option>` + dirOpts;
+    $("#filterGroupDirection").innerHTML = `<option value="">Все направления</option>` + dirOpts;
+    $("#newGroupDirection").innerHTML = dirOpts;
+    $("#newGroupTeacher").innerHTML = DATA.users.filter(u => u.role === "teacher")
+      .map(t => `<option value="${t.id}">${fullName(t)} — ${t.direction}</option>`).join("");
+    renderMemberPicker();
+  }
+
+  function renderMemberPicker() {
+    const free = DATA.users.filter(u => u.role === "employee" && !u.groupId);
+    $("#memberPicker").innerHTML = free.length
+      ? free.slice(0, 40).map(u => `<label><input type="checkbox" name="members" value="${u.id}"> ${fullName(u)} (${u.direction})</label>`).join("")
+        + (free.length > 40 ? `<p style="color:var(--muted);font-size:12px;margin:8px 0 0">Показаны первые 40 из ${free.length} без группы</p>` : "")
+      : `<span style="color:var(--muted);font-size:13px">Нет свободных сотрудников</span>`;
+  }
+
+  function switchTab(tab) {
+    state.tab = tab;
+    document.querySelectorAll(".tab").forEach(el => el.classList.toggle("active", el.dataset.tab === tab));
+    document.querySelectorAll(".panel").forEach(el => el.classList.toggle("active", el.id === "panel-" + tab));
+    if (tab === "groups") { renderGroups(); renderMemberPicker(); }
+    if (tab === "directions") renderDirections();
+  }
+
+  function exportCsv() {
+    const rows = [["id","firstName","lastName","role","direction","group","status","email","load"]];
+    filteredEmployees().forEach(u => rows.push([u.id, u.firstName, u.lastName, u.role, u.direction, groupName(u.groupId), u.status, u.email, u.load]));
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+    a.download = "employees.csv";
+    a.click();
+    showToast("Экспортировано " + (rows.length - 1) + " записей");
+  }
+
+  $("#tabs").addEventListener("click", (e) => {
+    if (e.target.classList.contains("tab")) switchTab(e.target.dataset.tab);
+  });
+
+  $("#searchEmployees").addEventListener("input", (e) => { state.empSearch = e.target.value; state.empPage = 1; renderEmployees(); });
+  $("#filterRole").addEventListener("change", (e) => { state.empRole = e.target.value; state.empPage = 1; renderEmployees(); });
+  $("#filterDirection").addEventListener("change", (e) => { state.empDirection = e.target.value; state.empPage = 1; renderEmployees(); });
+  $("#filterStatus").addEventListener("change", (e) => { state.empStatus = e.target.value; state.empPage = 1; renderEmployees(); });
+  $("#searchGroups").addEventListener("input", (e) => { state.groupSearch = e.target.value; renderGroups(); });
+  $("#filterGroupDirection").addEventListener("change", (e) => { state.groupDirection = e.target.value; renderGroups(); });
+  $("#exportBtn").addEventListener("click", exportCsv);
+
+  $("#createGroupForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $("#newGroupName").value.trim();
+    const direction = $("#newGroupDirection").value;
+    const teacherId = +$("#newGroupTeacher").value;
+    const memberIds = [...document.querySelectorAll('#memberPicker input:checked')].map(c => +c.value);
+    if (DATA.groups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
+      showToast("Группа с таким названием уже существует");
+      return;
+    }
+    const newId = Math.max(...DATA.groups.map(g => g.id)) + 1;
+    memberIds.forEach(uid => {
+      const u = DATA.users.find(x => x.id === uid);
+      if (u) { u.groupId = newId; u.direction = direction; u.status = "active"; }
+    });
+    DATA.groups.push({ id: newId, name, direction, teacherId, memberIds, status: memberIds.length ? "active" : "forming" });
+    $("#newGroupName").value = "";
+    renderStats(); renderGroups(); renderEmployees(); renderDirections(); renderMemberPicker();
+    showToast(`Группа «${name}» создана (${memberIds.length} участников)`);
+  });
+
+  fillSelects();
+  renderStats();
+  renderEmployees();
+  renderGroups();
+  renderDirections();
+})();
+  </script>
+</body>
+</html>

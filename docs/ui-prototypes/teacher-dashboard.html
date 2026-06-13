@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Преподаватель — MAX RASS</title>
+  <style>
+    :root {
+      --bg: #f4f7fb; --surface: #fff; --primary: #2563eb; --primary-dark: #1d4ed8;
+      --text: #111827; --muted: #64748b; --border: #e2e8f0;
+      --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: Inter, "Segoe UI", Arial, sans-serif; color: var(--text);
+      background: radial-gradient(circle at 0% 0%, rgba(37,99,235,.12), transparent 40%),
+        radial-gradient(circle at 100% 100%, rgba(124,58,237,.08), transparent 35%), var(--bg);
+    }
+    .page { max-width: 1140px; margin: 0 auto; padding: 24px 16px 48px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+    .header h1 { margin: 0; font-size: 22px; }
+    .header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+    .user { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+    .avatar { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; background: #dbeafe; color: var(--primary-dark); font-size: 12px; font-weight: 700; }
+    .user span { color: var(--muted); }
+    .logout { color: var(--primary); font-size: 13px; font-weight: 600; text-decoration: none; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+    .stat, .card { border: 1px solid var(--border); border-radius: 16px; background: var(--surface); box-shadow: 0 12px 40px rgba(15,23,42,.05); }
+    .stat { padding: 14px 16px; }
+    .stat span { color: var(--muted); font-size: 13px; }
+    .stat strong { display: block; margin-top: 4px; font-size: 22px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .tab { padding: 8px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; }
+    .tab.active { border-color: var(--primary); background: #eff6ff; color: var(--primary-dark); }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card { padding: 20px; margin-bottom: 16px; }
+    .card h2 { margin: 0 0 14px; font-size: 18px; }
+    .next { padding: 18px 20px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); box-shadow: 0 12px 40px rgba(15,23,42,.05); }
+    .next-label { color: var(--muted); font-size: 13px; font-weight: 600; }
+    .next h2 { margin: 8px 0 6px; font-size: 18px; }
+    .next p { margin: 0; color: var(--muted); font-size: 14px; }
+    .next-time { display: inline-block; margin-top: 10px; padding: 4px 10px; border-radius: 8px; background: #eff6ff; color: var(--primary-dark); font-size: 13px; font-weight: 600; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .schedule-item { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 14px; cursor: pointer; }
+    .schedule-item:last-child { border-bottom: 0; }
+    .schedule-item.selected { background: #f8fafc; margin: 0 -12px; padding: 12px; border-radius: 10px; }
+    .schedule-item strong { display: block; margin-bottom: 2px; }
+    .schedule-item span { color: var(--muted); font-size: 13px; }
+    .time { color: var(--primary-dark); font-weight: 700; min-width: 52px; }
+    .tag { padding: 3px 8px; border-radius: 8px; background: #eff6ff; color: var(--primary-dark); font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .tag.green { background: #dcfce7; color: #166534; }
+    .tag.orange { background: #fef3c7; color: #92400e; }
+    .tag.gray { background: #f1f5f9; color: #475569; }
+    .student { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .student:last-of-type { border-bottom: 0; }
+    .student span { color: var(--muted); font-size: 13px; }
+    .status-group { display: flex; gap: 4px; flex-wrap: wrap; }
+    .status { padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+    .status.active[data-status="present"] { border-color: #86efac; background: #dcfce7; color: #166534; }
+    .status.active[data-status="late"] { border-color: #fcd34d; background: #fef3c7; color: #92400e; }
+    .status.active[data-status="absent"] { border-color: #fca5a5; background: #fee2e2; color: #991b1b; }
+    .footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+    .btn { padding: 10px 16px; border: 0; border-radius: 11px; background: var(--primary); color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .btn:hover { background: var(--primary-dark); }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .group-card { padding: 14px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; background: #fafbfc; }
+    .group-card strong { display: block; margin-bottom: 4px; }
+    .group-card span { color: var(--muted); font-size: 13px; }
+    .member-list { margin-top: 10px; font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .toolbar select { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font: inherit; font-size: 14px; margin-bottom: 14px; }
+    .toast { padding: 12px; border-radius: 10px; background: #eff6ff; color: var(--primary-dark); font-size: 13px; display: none; margin-top: 12px; }
+    .toast.show { display: block; }
+    .empty { color: var(--muted); text-align: center; padding: 24px; font-size: 14px; }
+    @media (max-width: 768px) { .grid-2, .stats { grid-template-columns: 1fr; } .student { flex-direction: column; align-items: flex-start; } .status { flex: 1; text-align: center; min-height: 40px; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div><h1 id="pageTitle">Панель преподавателя</h1><p id="pageSubtitle">Расписание и посещаемость</p></div>
+      <div class="user">
+        <div class="avatar" id="teacherAvatar">—</div>
+        <div><span id="teacherName">—</span><br><span>Преподаватель</span></div>
+        <a class="logout" href="auth.html">Выйти</a>
+      </div>
+    </header>
+
+    <section class="stats" id="stats"></section>
+
+    <nav class="tabs" id="tabs">
+      <button type="button" class="tab active" data-tab="today">Сегодня</button>
+      <button type="button" class="tab" data-tab="schedule">Расписание</button>
+      <button type="button" class="tab" data-tab="groups">Группы</button>
+    </nav>
+
+    <section class="panel active" id="panel-today">
+      <div class="next" id="nextLesson"></div>
+      <div class="grid-2">
+        <div class="card">
+          <h2>Занятия сегодня</h2>
+          <div id="todaySchedule"></div>
+        </div>
+        <div class="card">
+          <h2 id="attendanceTitle">Посещаемость</h2>
+          <div id="attendanceList"></div>
+          <div class="footer">
+            <span id="saveStatus">Выберите занятие</span>
+            <span id="attendanceSummary"></span>
+            <button type="button" class="btn" id="saveBtn" disabled>Сохранить</button>
+          </div>
+          <div class="toast" id="toast"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-schedule">
+      <div class="card">
+        <h2>Расписание на неделю</h2>
+        <select id="weekFilter"></select>
+        <div id="weekSchedule"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-groups">
+      <div class="card">
+        <h2>Мои группы (<span id="groupCount">0</span>)</h2>
+        <div id="groupsList"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+(function () {
+  "use strict";
+
+  const DIRECTIONS = ["Frontend","Backend","Data Analytics","UX/UI Design","DevOps","Mobile","QA","Project Management"];
+  const FIRST = ["Иван","Алексей","Дмитрий","Сергей","Андрей","Михаил","Никита","Павел","Артём","Максим","Егор","Роман","Владимир","Кирилл","Олег","Анна","Мария","Елена","Ольга","Наталья","Татьяна","Ирина","Светлана","Екатерина","Виктория","Полина","Алина","Дарья","Юлия","Ксения","Вероника","Анастасия","Людмила","Галина","Надежда","Валерия","София","Кристина","Лариса","Жанна"];
+  const LAST = ["Иванов","Петров","Сидоров","Смирнов","Кузнецов","Попов","Васильев","Соколов","Михайлов","Новиков","Фёдоров","Морозов","Волков","Алексеев","Лебедев","Семёнов","Егоров","Павлов","Козлов","Степанов","Николаев","Орлов","Андреев","Макаров","Никитин","Захаров","Зайцев","Соловьёв","Борисов","Яковлев","Григорьев","Романов","Воробьёв","Сергеев","Куликов","Медведев","Ершов","Комаров","Белов","Тарасов"];
+  const TOPICS = ["REST API","Авторизация","SQL и индексы","React hooks","Тестирование","Docker","CI/CD","Паттерны проектирования","Async Python","GraphQL","UX research","Figma прототипы","Kotlin basics","Swift UI","Нагрузочное тестирование","Scrum практики"];
+  const ROOMS = ["212","214","304","305","online","401","115"];
+
+  function seededRandom(seed) {
+    let s = seed;
+    return function () { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+  }
+  function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+
+  function buildEmbeddedData() {
+    const rng = seededRandom(42);
+    const users = [];
+    let id = 1;
+    for (let i = 0; i < 18; i++) {
+      const fn = pick(rng, FIRST), ln = pick(rng, LAST);
+      users.push({ id: id++, firstName: fn, lastName: ln, role: "teacher", direction: pick(rng, DIRECTIONS), groupId: null, status: "active", email: fn.toLowerCase()+"."+ln.toLowerCase()+"@company.ru" });
+    }
+    for (let i = 0; i < 12; i++) {
+      const fn = pick(rng, FIRST), ln = pick(rng, LAST);
+      users.push({ id: id++, firstName: fn, lastName: ln, role: "curator", direction: pick(rng, DIRECTIONS), groupId: null, status: "active", email: fn.toLowerCase()+"."+ln.toLowerCase()+"@company.ru" });
+    }
+    while (users.length < 200) {
+      const fn = pick(rng, FIRST), ln = pick(rng, LAST);
+      users.push({ id: id++, firstName: fn, lastName: ln, role: "employee", direction: pick(rng, DIRECTIONS), groupId: null, status: "active", email: fn.toLowerCase()+"."+ln.toLowerCase()+"@company.ru" });
+    }
+
+    const groupNames = ["Frontend-24","Frontend-25","Backend-22","Backend-24","Backend-26","DA-11","DA-12","DA-14","Design-08","Design-09","Design-11","DevOps-03","DevOps-04","Mobile-07","Mobile-09","QA-05","QA-06","PM-02","PM-03","Fullstack-15"];
+    const groups = [];
+    const teachers = users.filter(u => u.role === "teacher");
+    const employees = users.filter(u => u.role === "employee");
+
+    groupNames.forEach((name, gi) => {
+      const direction = DIRECTIONS[gi % DIRECTIONS.length];
+      const teacher = teachers[gi % teachers.length];
+      const memberIds = [];
+      for (let m = 0; m < 8 + (gi % 7); m++) {
+        const uid = employees[(gi * 9 + m) % employees.length].id;
+        if (!memberIds.includes(uid)) memberIds.push(uid);
+      }
+      memberIds.forEach(uid => {
+        const u = users.find(x => x.id === uid);
+        if (u) { u.groupId = gi + 1; u.direction = direction; }
+      });
+      groups.push({ id: gi + 1, name, direction, teacherId: teacher.id, memberIds: memberIds.slice() });
+    });
+
+    const LOGGED_TEACHER_ID = teachers[3].id;
+    groups.forEach((g, i) => {
+      if (i % 3 === 0 || i % 7 === 1) g.teacherId = LOGGED_TEACHER_ID;
+    });
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const lessons = [];
+    let lid = 1;
+
+    groups.forEach(g => {
+      for (let dayOffset = -2; dayOffset <= 4; dayOffset++) {
+        if (g.teacherId !== LOGGED_TEACHER_ID) continue;
+        [10, 14, 18].forEach((hour, si) => {
+          if (dayOffset === 4 && si > 0) return;
+          const d = new Date(today);
+          d.setDate(d.getDate() + dayOffset);
+          d.setHours(hour, 30, 0, 0);
+          const end = new Date(d);
+          end.setHours(hour + 1, 30, 0, 0);
+          const now = new Date();
+          let status = "planned";
+          if (d < now && end < now) status = "done";
+          else if (d <= now && end >= now) status = "now";
+          else if (d.toDateString() === now.toDateString() && d > now) status = "soon";
+          lessons.push({
+            id: lid++, groupId: g.id, teacherId: g.teacherId,
+            title: pick(rng, TOPICS), room: pick(rng, ROOMS),
+            startsAt: d.toISOString(), endsAt: end.toISOString(), status
+          });
+        });
+      }
+    });
+
+    return { users, groups, lessons, loggedTeacherId: LOGGED_TEACHER_ID };
+  }
+
+  const DATA = buildEmbeddedData();
+  const teacher = DATA.users.find(u => u.id === DATA.loggedTeacherId);
+  const myGroups = DATA.groups.filter(g => g.teacherId === teacher.id);
+  const myLessons = DATA.lessons.filter(l => l.teacherId === teacher.id).sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+
+  const attendance = {};
+  const savedLessons = new Set();
+  let selectedLessonId = null;
+  let tab = "today";
+
+  function fullName(u) { return u.firstName + " " + u.lastName; }
+  function initials(u) { return (u.firstName[0] + u.lastName[0]).toUpperCase(); }
+  function groupById(id) { return DATA.groups.find(g => g.id === id); }
+  function lessonById(id) { return DATA.lessons.find(l => l.id === id); }
+  function fmtTime(iso) {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  }
+  function fmtDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+  }
+  function isToday(iso) { return new Date(iso).toDateString() === new Date().toDateString(); }
+
+  function initAttendance(lessonId) {
+    if (attendance[lessonId]) return;
+    const g = groupById(lessonById(lessonId).groupId);
+    attendance[lessonId] = {};
+    g.memberIds.forEach((uid, i) => {
+      attendance[lessonId][uid] = i % 7 === 0 ? "absent" : (i % 5 === 0 ? "late" : "present");
+    });
+  }
+
+  function statusTag(s) {
+    return { done: ["green","проведено"], now: ["orange","сейчас"], soon: ["orange","скоро"], planned: ["gray","план"] }[s] || ["gray","—"];
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 3500);
+  }
+
+  function renderHeader() {
+    document.getElementById("teacherAvatar").textContent = initials(teacher);
+    document.getElementById("teacherName").textContent = fullName(teacher);
+    const todayLessons = myLessons.filter(l => isToday(l.startsAt));
+    const students = myGroups.reduce((s, g) => s + g.memberIds.length, 0);
+    const saved = savedLessons.size;
+    document.getElementById("stats").innerHTML = [
+      ["Занятий сегодня", todayLessons.length],
+      ["Студентов", students],
+      ["Групп", myGroups.length]
+    ].map(([l,v]) => `<article class="stat"><span>${l}</span><strong>${v}</strong></article>`).join("");
+  }
+
+  function renderNext() {
+    const upcoming = myLessons.filter(l => new Date(l.endsAt) >= new Date()).sort((a,b) => new Date(a.startsAt)-new Date(b.startsAt))[0];
+    const el = document.getElementById("nextLesson");
+    if (!upcoming) { el.innerHTML = `<span class="next-label">Ближайшее занятие</span><h2>Нет запланированных занятий</h2>`; return; }
+    const g = groupById(upcoming.groupId);
+    el.innerHTML = `<span class="next-label">Ближайшее занятие</span>
+      <h2>${g.name}: ${upcoming.title}</h2>
+      <p>Кабинет ${upcoming.room} · ${g.memberIds.length} студентов</p>
+      <span class="next-time">${fmtDate(upcoming.startsAt)}, ${fmtTime(upcoming.startsAt)} – ${fmtTime(upcoming.endsAt)}</span>`;
+  }
+
+  function renderTodaySchedule() {
+    const list = myLessons.filter(l => isToday(l.startsAt));
+    const el = document.getElementById("todaySchedule");
+    if (!list.length) { el.innerHTML = `<div class="empty">Сегодня занятий нет</div>`; return; }
+    el.innerHTML = list.map(l => {
+      const g = groupById(l.groupId);
+      const [cls, lbl] = statusTag(l.status);
+      return `<article class="schedule-item ${selectedLessonId===l.id?"selected":""}" data-lesson="${l.id}">
+        <span class="time">${fmtTime(l.startsAt)}</span>
+        <div><strong>${l.title}</strong><span>${g.name} · каб. ${l.room}</span></div>
+        <span class="tag ${cls}">${lbl}</span>
+      </article>`;
+    }).join("");
+    el.querySelectorAll("[data-lesson]").forEach(row => {
+      row.addEventListener("click", () => selectLesson(+row.dataset.lesson));
+    });
+    if (!selectedLessonId && list.length) selectLesson(list.find(l => l.status==="now"||l.status==="soon")?.id || list[0].id);
+  }
+
+  function selectLesson(lessonId) {
+    selectedLessonId = lessonId;
+    initAttendance(lessonId);
+    const l = lessonById(lessonId);
+    const g = groupById(l.groupId);
+    document.getElementById("attendanceTitle").textContent = `Посещаемость · ${g.name}`;
+    renderTodaySchedule();
+    renderAttendance();
+  }
+
+  function renderAttendance() {
+    const el = document.getElementById("attendanceList");
+    const saveBtn = document.getElementById("saveBtn");
+    if (!selectedLessonId) {
+      el.innerHTML = `<div class="empty">Выберите занятие слева</div>`;
+      saveBtn.disabled = true;
+      return;
+    }
+    saveBtn.disabled = false;
+    const g = groupById(lessonById(selectedLessonId).groupId);
+    el.innerHTML = g.memberIds.map(uid => {
+      const u = DATA.users.find(x => x.id === uid);
+      const st = attendance[selectedLessonId][uid];
+      return `<article class="student" data-user="${uid}">
+        <div><strong>${fullName(u)}</strong><br><span>${g.name}</span></div>
+        <div class="status-group">
+          <button type="button" class="status ${st==="present"?"active":""}" data-status="present">Был</button>
+          <button type="button" class="status ${st==="late"?"active":""}" data-status="late">Опоздал</button>
+          <button type="button" class="status ${st==="absent"?"active":""}" data-status="absent">Нет</button>
+        </div>
+      </article>`;
+    }).join("");
+    el.querySelectorAll(".status").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const row = btn.closest(".student");
+        const uid = +row.dataset.user;
+        row.querySelectorAll(".status").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        attendance[selectedLessonId][uid] = btn.dataset.status;
+        savedLessons.delete(selectedLessonId);
+        updateSummary();
+        document.getElementById("saveStatus").textContent = "Не сохранено";
+      });
+    });
+    updateSummary();
+    document.getElementById("saveStatus").textContent = savedLessons.has(selectedLessonId) ? "Сохранено" : "Не сохранено";
+  }
+
+  function updateSummary() {
+    if (!selectedLessonId) return;
+    const rec = attendance[selectedLessonId];
+    const total = Object.keys(rec).length;
+    const present = Object.values(rec).filter(s => s === "present" || s === "late").length;
+    document.getElementById("attendanceSummary").textContent = `Присутствуют: ${present} из ${total}`;
+  }
+
+  function renderWeekSchedule() {
+    const days = [...new Set(myLessons.map(l => new Date(l.startsAt).toDateString()))].sort();
+    const filter = document.getElementById("weekFilter");
+    filter.innerHTML = days.map(d => `<option value="${d}">${new Date(d).toLocaleDateString("ru-RU",{weekday:"long",day:"numeric",month:"long"})}</option>`).join("");
+    const render = () => {
+      const day = filter.value;
+      const list = myLessons.filter(l => new Date(l.startsAt).toDateString() === day);
+      document.getElementById("weekSchedule").innerHTML = list.length ? list.map(l => {
+        const g = groupById(l.groupId);
+        const [cls,lbl] = statusTag(l.status);
+        return `<article class="schedule-item"><span class="time">${fmtTime(l.startsAt)}</span>
+          <div><strong>${l.title}</strong><span>${g.name} · каб. ${l.room}</span></div>
+          <span class="tag ${cls}">${lbl}</span></article>`;
+      }).join("") : `<div class="empty">Нет занятий</div>`;
+    };
+    filter.onchange = render;
+    render();
+  }
+
+  function renderGroups() {
+    document.getElementById("groupCount").textContent = myGroups.length;
+    document.getElementById("groupsList").innerHTML = myGroups.map(g => {
+      const names = g.memberIds.slice(0, 8).map(id => fullName(DATA.users.find(u => u.id === id))).join(", ");
+      const more = g.memberIds.length > 8 ? ` и ещё ${g.memberIds.length - 8}` : "";
+      const lessonCount = myLessons.filter(l => l.groupId === g.id).length;
+      return `<article class="group-card">
+        <strong>${g.name}</strong>
+        <span>${g.direction} · ${g.memberIds.length} студентов · ${lessonCount} занятий</span>
+        <div class="member-list">${names}${more}</div>
+      </article>`;
+    }).join("");
+  }
+
+  function switchTab(name) {
+    tab = name;
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + name));
+    if (name === "schedule") renderWeekSchedule();
+    if (name === "groups") renderGroups();
+  }
+
+  document.getElementById("tabs").addEventListener("click", e => {
+    if (e.target.classList.contains("tab")) switchTab(e.target.dataset.tab);
+  });
+
+  document.getElementById("saveBtn").addEventListener("click", () => {
+    if (!selectedLessonId) return;
+    savedLessons.add(selectedLessonId);
+    document.getElementById("saveStatus").textContent = "Сохранено";
+    const l = lessonById(selectedLessonId);
+    showToast(`Посещаемость сохранена · ${groupById(l.groupId).name} · ${fmtTime(l.startsAt)}`);
+  });
+
+  renderHeader();
+  renderNext();
+  renderTodaySchedule();
+  renderGroups();
+})();
+  </script>
+</body>
+</html>

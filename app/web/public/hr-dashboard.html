@@ -1,0 +1,2516 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HR — MAX RASS</title>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="icons.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="groups-panel.css">
+  <link rel="stylesheet" href="teacher-panel.css">
+  <link rel="stylesheet" href="ui-components.css">
+  <script src="/auth-guard.js"></script>
+  <script>window.MaxRassAuth.requireSystemRoles(["hr", "admin"], "/");</script>
+</head>
+<body>
+  <div class="toast-top" id="toastTop"></div>
+  <div class="page">
+    <header class="header">
+      <div><h1>HR-панель</h1><p>Ученики, рабочие группы, посещаемость</p></div>
+      <div class="user">
+        <div class="avatar" id="hrAvatar">—</div>
+        <div><span id="hrName">—</span><br><span>HR</span></div>
+        <a class="logout" href="/logout">Выйти</a>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button type="button" class="tab active" data-tab="students">Ученики</button>
+      <button type="button" class="tab" data-tab="groups">Рабочие группы</button>
+      <button type="button" class="tab" data-tab="teachers">Преподаватели</button>
+      <button type="button" class="tab" data-tab="curators">Кураторы</button>
+      <button type="button" class="tab" data-tab="attendance">Посещаемость</button>
+      <button type="button" class="tab" data-tab="lessons">Расписание</button>
+      <button type="button" class="tab" data-tab="strikes">Страйки</button>
+      <button type="button" class="tab" data-tab="notifications">Уведомления</button>
+      <button type="button" class="tab" data-tab="reports">Отчёты</button>
+    </nav>
+
+    <section class="panel active" id="panel-students"></section>
+    <section class="panel" id="panel-groups"></section>
+    <section class="panel" id="panel-teachers"></section>
+    <section class="panel" id="panel-curators"></section>
+    <section class="panel" id="panel-attendance"></section>
+    <section class="panel" id="panel-lessons"></section>
+    <section class="panel" id="panel-strikes"></section>
+    <section class="panel" id="panel-notifications"></section>
+    <section class="panel" id="panel-reports"></section>
+  </div>
+
+  <div class="overlay" id="modalOverlay">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <div>
+          <h3 id="modalTitle">Добавить</h3>
+          <p id="modalSubtitle">Импорт из Excel или ручной ввод</p>
+        </div>
+        <div class="modal-header-actions">
+          <button type="button" class="btn secondary small" id="downloadTemplateBtn" data-icon="download">Скачать шаблон</button>
+          <label class="btn secondary small" for="importFile" data-icon="upload">Импортировать</label>
+          <input type="file" id="importFile" accept=".xlsx,.xls">
+          <button type="button" class="modal-close" id="modalClose" aria-label="Закрыть" data-icon="x" data-icon-pos="only"></button>
+        </div>
+      </div>
+      <div class="modal-scroll">
+        <div class="bulk-group-panel" id="bulkGroupPanel" style="display:none">
+          <h4>Назначение в группу</h4>
+          <p class="stat-mini">После импорта ученики будут добавлены в выбранную или новую рабочую группу</p>
+          <div class="bulk-group-grid">
+            <div><label class="ui-label">Режим</label><div id="bulkGroupMode"></div></div>
+            <div id="bulkGroupExistingWrap"><label class="ui-label">Рабочая группа</label><div id="bulkGroupSelect"></div></div>
+            <div id="bulkGroupNewWrap" style="display:none">
+              <div><label class="ui-label">Направление</label><div id="bulkGroupDirection"></div></div>
+              <div><label class="ui-label">Название новой группы</label><input class="cell-input" id="bulkGroupNewName" placeholder="Backend-26"></div>
+            </div>
+          </div>
+        </div>
+        <div class="preview-table" id="previewTable"></div>
+        <div class="preview-actions">
+          <button type="button" class="btn secondary small" id="addManualRowBtn" data-icon="plus">Добавить строку</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn secondary" id="modalCancelBtn" data-icon="x">Отмена</button>
+        <button type="button" class="btn" id="modalSaveBtn" data-icon="check">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="groupOverlay">
+    <div class="modal group-editor">
+      <div class="modal-header">
+        <div><h3 id="groupEditTitle">Группа</h3><p id="groupEditSubtitle">Участники и параметры</p></div>
+        <button type="button" class="modal-close" id="groupEditClose" aria-label="Закрыть" data-icon="x" data-icon-pos="only"></button>
+      </div>
+      <div class="modal-scroll">
+        <div class="group-editor-grid">
+          <div class="ge-col ge-fields">
+            <div><label class="ui-label">Название</label><input class="cell-input" id="geName"></div>
+            <div><label class="ui-label">Направление</label><div id="geDirection"></div></div>
+            <div><label class="ui-label">Статус</label><div id="geStatus"></div></div>
+            <div><label class="ui-label">HR группы</label><div id="geHr"></div></div>
+          </div>
+          <div class="ge-col">
+            <div class="ge-col-head">В группе</div>
+            <div class="ge-col-body" id="geMemberList"></div>
+          </div>
+          <div class="ge-col">
+            <div class="ge-col-head">Не в группе</div>
+            <div class="ge-col-body">
+              <input type="search" class="ge-search" id="geSearchAvail" placeholder="Поиск по имени">
+              <div id="geAvailList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer modal-footer-between">
+        <div class="modal-footer-actions">
+          <button type="button" class="btn secondary small" id="geAssignTeacherBtn" data-icon="user-plus">Назначить преподавателя</button>
+          <button type="button" class="btn secondary small" id="geTemplateBtn" data-icon="download">Скачать шаблон</button>
+          <label class="btn secondary small" for="geImportFile" data-icon="upload">Импортировать</label>
+          <input type="file" id="geImportFile" accept=".xlsx,.xls" style="display:none">
+        </div>
+        <div class="modal-footer-actions">
+          <button type="button" class="btn secondary" id="geCancelBtn" data-icon="x">Отмена</button>
+          <button type="button" class="btn" id="geSaveBtn" data-icon="check">Сохранить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="editOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <div><h3 id="editTitle">Редактирование</h3><p id="editSubtitle"></p></div>
+        <button type="button" class="modal-close" id="editClose" aria-label="Закрыть" data-icon="x" data-icon-pos="only"></button>
+      </div>
+      <div class="modal-scroll" id="editBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn secondary" id="editCancelBtn" data-icon="x">Отмена</button>
+        <button type="button" class="btn" id="editSaveBtn" data-icon="check">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="assignTeacherOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <div><h3 id="assignTeacherTitle">Назначить преподавателя</h3><p id="assignTeacherSubtitle">Создание занятия связывает преподавателя с группой</p></div>
+        <button type="button" class="modal-close" id="assignTeacherClose" aria-label="Закрыть" data-icon="x" data-icon-pos="only"></button>
+      </div>
+      <div class="modal-scroll">
+        <div class="edit-form">
+          <div class="edit-row">
+            <div><label class="ui-label">Преподаватель *</label><div id="laTeacher"></div></div>
+            <div><label class="ui-label">Группа *</label><div id="laGroup"></div></div>
+          </div>
+          <div class="edit-row">
+            <div><label class="ui-label">Дата *</label><input class="cell-input" type="date" id="laDate" style="width:100%;max-width:none"></div>
+            <div><label class="ui-label">Время начала *</label><input class="cell-input" type="time" id="laTime" style="width:100%;max-width:none"></div>
+          </div>
+          <div class="edit-row">
+            <div><label class="ui-label">Тип занятия</label><div id="laType"></div></div>
+            <div><label class="ui-label">Место</label><input class="cell-input" id="laPlace" placeholder="Аудитория / ссылка" style="width:100%;max-width:none"></div>
+          </div>
+          <div><label class="ui-label">Название</label><input class="cell-input" id="laTitle" placeholder="Необязательно — иначе по типу" style="width:100%;max-width:none"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn secondary" id="laCancelBtn" data-icon="x">Отмена</button>
+        <button type="button" class="btn" id="laSaveBtn" data-icon="check">Создать занятие</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="banReasonOverlay">
+    <div class="modal modal-narrow">
+      <div class="modal-header">
+        <div><h3 id="banReasonTitle">Причина блокировки</h3><p id="banReasonSubtitle"></p></div>
+        <button type="button" class="modal-close" id="banReasonClose" aria-label="Закрыть" data-icon="x" data-icon-pos="only"></button>
+      </div>
+      <div class="modal-scroll">
+        <label class="ui-label" for="banReasonInput" id="banReasonLabel">Комментарий</label>
+        <textarea class="cell-input ban-reason-input" id="banReasonInput" rows="3" placeholder="Укажите причину"></textarea>
+        <p class="stat-mini ban-reason-hint" id="banReasonHint">Комментарий сохранится в поле «Причина бана» и будет виден в таблице учеников.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn secondary" id="banReasonCancelBtn" data-icon="x">Отмена</button>
+        <button type="button" class="btn danger" id="banReasonSaveBtn" data-icon="check">Заблокировать</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="strikeHistoryOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <div><h3 id="strikeHistoryTitle">История страйков</h3><p id="strikeHistorySubtitle"></p></div>
+        <button type="button" class="modal-close" id="strikeHistoryClose" aria-label="Закрыть" data-icon="x" data-icon-pos="only"></button>
+      </div>
+      <div class="modal-scroll" id="strikeHistoryBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn secondary" id="strikeHistoryOkBtn" data-icon="check">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/auth-guard.js"></script>
+  <script src="/api-client.js"></script>
+  <script src="hr-api.js"></script>
+  <script src="hr-reports.js"></script>
+  <script src="icons.js"></script>
+  <script src="ui-components.js"></script>
+  <script src="field-formatters.js"></script>
+  <script src="teacher-schedule.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+(async function () {
+  "use strict";
+  let D;
+  try {
+    D = await HrApi.bootstrap();
+  } catch (err) {
+    if (window.MaxRassAuth && MaxRassAuth.isAuthErrorMessage(err && err.message)) {
+      MaxRassAuth.redirectToLogin("/hr-dashboard.html");
+      return;
+    }
+    document.body.innerHTML = "<div style='padding:40px;font-family:sans-serif'><h2>Ошибка загрузки</h2><p>" + (err.message || err) + "</p><p>Убедитесь, что запущены docker compose (Keycloak + max-auth на порту 8025).</p><p><a href='/'>На главную</a></p></div>";
+    return;
+  }
+  let hr = D.userById(D.session.hrId);
+  const hrScheduleCmps = {};
+  let hrRangeFrom = (() => {
+    const x = new Date();
+    x.setHours(0, 0, 0, 0);
+    const day = x.getDay();
+    x.setDate(x.getDate() - ((day + 6) % 7));
+    return x;
+  })();
+  let hrRangeTo = (() => {
+    const x = new Date(hrRangeFrom);
+    x.setDate(x.getDate() + 6);
+    return x;
+  })();
+
+  function startOfDay(d) {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  }
+  function addDays(d, n) {
+    const x = new Date(d);
+    x.setDate(x.getDate() + n);
+    return x;
+  }
+  function dateStr(d) { return UI.toDateStr(d); }
+  function daysBetween(from, to) {
+    const days = [];
+    const cur = startOfDay(from);
+    const end = startOfDay(to);
+    while (cur <= end) {
+      days.push(new Date(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    return days;
+  }
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function normalizeHrLesson(l) {
+    const end = l.ends_at ? new Date(l.ends_at) : null;
+    return {
+      id: l.id,
+      id_group: l.group_id,
+      id_teacher: l.teacher_id,
+      title: l.title,
+      place: l.place,
+      date: l.date && l.date !== "—" ? l.date : (l.starts_at ? dateStr(new Date(l.starts_at)) : ""),
+      time: l.time,
+      timeEnd: end ? end.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "",
+      startsAt: l.starts_at,
+      endsAt: l.ends_at,
+      group_name: l.group_name,
+      teacher_name: l.teacher_name,
+    };
+  }
+
+  async function reloadData() {
+    D = await HrApi.refresh();
+    hr = D.userById(D.session.hrId);
+  }
+  const $ = (s) => document.querySelector(s);
+  const PAGE_SIZE = 20;
+  const I = (n) => ICONS.icon(n);
+
+  const USER_FIELD_META = {
+    last_name: { label: "Фамилия", required: true },
+    first_name: { label: "Имя", required: true },
+    middle_name: { label: "Отчество", required: false },
+    id_max: { label: "ID MAX", required: false },
+    phone: { label: "Телефон", required: false },
+    status: { label: "Статус", required: false },
+    id_curator: { label: "Куратор", required: false },
+  };
+
+  const MODAL_CONFIG = {
+    students: {
+      title: "Добавить учеников",
+      type: "users",
+      roleCode: "student",
+      fields: ["last_name", "first_name", "middle_name", "id_max", "phone", "status", "id_curator"],
+    },
+    teachers: {
+      title: "Добавить преподавателей",
+      type: "users",
+      roleCode: "teacher",
+      fields: ["last_name", "first_name", "middle_name", "id_max", "phone", "status"],
+    },
+    curators: {
+      title: "Добавить кураторов",
+      type: "users",
+      roleCode: "curator",
+      fields: ["last_name", "first_name", "middle_name", "id_max", "phone", "status"],
+    },
+  };
+
+  const ROLE_UI_LABELS = { student: "Ученик", teacher: "Преподаватель", curator: "Куратор" };
+
+  function roleLabel(code) {
+    return ROLE_UI_LABELS[code] || code;
+  }
+
+  function fieldLabel(f) {
+    const meta = USER_FIELD_META[f] || { label: f, required: false };
+    return meta.required ? meta.label + " *" : meta.label;
+  }
+
+  function isUserRowEmpty(row) {
+    return !String(row.last_name || "").trim()
+      && !String(row.first_name || "").trim()
+      && !String(row.middle_name || "").trim()
+      && !String(row.fio || "").trim();
+  }
+
+  function hasRequiredUserFields(row) {
+    return !!(String(row.last_name || "").trim() && String(row.first_name || "").trim());
+  }
+
+  const state = {
+    tab: "students",
+    pages: { students: 1, teachers: 1, curators: 1, attendance: 1, lessons: 1, strikes: 1 },
+    search: { students: "", teachers: "", curators: "", attendance: "", lessons: "", strikes: "" },
+    filters: {
+      students: { status: "", course: "", group: "", strike: "" },
+      teachers: { status: "" },
+      curators: { status: "" },
+      attendance: { group: "" },
+      lessons: { group: "" },
+      strikes: { status: "" },
+      notifications: { category: "" },
+      groups: { direction: "", group: "" }
+    },
+    notifRead: JSON.parse(localStorage.getItem("hrNotifRead") || "{}"),
+    bulkGroup: { mode: "none", groupId: "", directionId: "", newName: "" },
+    groupsView: "side",
+    attGroupExpanded: {},
+    selectedGroupId: null,
+    fsOpen: {},
+    addDirForm: false,
+    dirPopoverOpen: false,
+    modalKey: null,
+    modalRows: [],
+    attExpanded: {},
+    reports: { selectedId: "employees", loading: false, result: null, error: null, expandedByReport: {} },
+    edit: null,
+    editCmps: {},
+    groupEdit: null,
+    banModal: null,
+  };
+
+  const filterCmps = {};
+  const groupEditCmps = {};
+  const lessonAssignCmps = {};
+  const modalSelectCmps = [];
+  const modalFieldCmps = { max: {}, phone: {}, curator: {} };
+  const bulkGroupCmps = {};
+  const tableSelectCmps = [];
+
+  function destroyCmps(list) { list.forEach(c => c?.destroy?.()); list.length = 0; }
+  function destroyModalFieldCmps() {
+    Object.values(modalFieldCmps.max).forEach(c => c?.destroy?.());
+    Object.values(modalFieldCmps.phone).forEach(c => c?.destroy?.());
+    Object.values(modalFieldCmps.curator).forEach(c => c?.destroy?.());
+    modalFieldCmps.max = {};
+    modalFieldCmps.phone = {};
+    modalFieldCmps.curator = {};
+    destroyCmps(modalSelectCmps);
+  }
+  function curatorComboList() {
+    return D.usersByRole("curator").map(c => ({ id: String(c.id), name: D.fullName(c) }));
+  }
+  function mountCuratorCombo(container, initialId, onChange) {
+    return HrFields.createCuratorCombo(container, {
+      curators: curatorComboList(),
+      value: initialId || "",
+      onChange,
+    });
+  }
+  function collectModalRowValues() {
+    state.modalRows.forEach((row, ri) => {
+      ["last_name", "first_name", "middle_name"].forEach(f => {
+        const inp = document.querySelector(`[data-row="${ri}"][data-field="${f}"]`);
+        if (inp) row[f] = inp.value.trim();
+      });
+      const maxInp = document.querySelector(`[data-row="${ri}"][data-field="id_max"]`);
+      const phoneInp = document.querySelector(`[data-row="${ri}"][data-field="phone"]`);
+      if (maxInp) row.id_max = modalFieldCmps.max[ri]?.getNormalized?.() ?? HrFields.normalizeMaxId(maxInp.value);
+      if (phoneInp) row.phone = modalFieldCmps.phone[ri]?.getNormalized?.() ?? HrFields.normalizePhone(phoneInp.value);
+      if (modalFieldCmps.curator[ri]) row.id_curator = modalFieldCmps.curator[ri].getValue();
+    });
+  }
+  function validateModalRows(rows, cfg) {
+    if (cfg.type === "users") {
+      const filled = rows.filter(r => !isUserRowEmpty(r));
+      if (!filled.length) return "Добавьте хотя бы одну строку с фамилией и именем";
+      if (!filled.some(hasRequiredUserFields)) return "Укажите фамилию и имя хотя бы в одной строке";
+    }
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (cfg.type === "users" && isUserRowEmpty(row)) continue;
+      if (cfg.type === "users" && !hasRequiredUserFields(row)) {
+        return `Строка ${i + 1}: укажите фамилию и имя`;
+      }
+      if (row.id_max) {
+        const vr = HrFields.validateMaxId(row.id_max);
+        if (!vr.valid) return `Строка ${i + 1}: неверный ID MAX`;
+      }
+      if (row.phone) {
+        const vp = HrFields.validatePhone(row.phone);
+        if (!vp.valid) return `Строка ${i + 1}: неверный телефон`;
+      }
+      if (row.id_curator && !HrFields.isUuid(row.id_curator)) {
+        return `Строка ${i + 1}: выберите куратора из списка или укажите корректный UUID`;
+      }
+    }
+    return null;
+  }
+  function initials(u) { return u ? (u.firstName[0] + u.lastName[0]).toUpperCase() : "—"; }
+  function statusOpts() {
+    return [{ value: "active", label: "Активен" }, { value: "inactive", label: "Не активен" }];
+  }
+  function manageableRoleOpts() {
+    return [
+      { value: "student", label: "Ученик" },
+      { value: "teacher", label: "Преподаватель" },
+      { value: "curator", label: "Куратор" },
+    ];
+  }
+  function wardCount(curatorId) {
+    return D.usersByRole("student").filter(u => u.id_curator === curatorId).length;
+  }
+  function curatorWardNames(curatorId) {
+    return D.usersByRole("student").filter(u => u.id_curator === curatorId).map(u => D.fullName(u));
+  }
+  function groupStatusOpts() {
+    return [{ value: "active", label: "Активна" }, { value: "forming", label: "Формируется" }];
+  }
+  function hrOpts() {
+    return D.usersByRole("hr").map(h => ({ value: String(h.id), label: D.fullName(h) }));
+  }
+  function findStudentByFio(fio) {
+    const s = String(fio || "").trim();
+    if (!s) return null;
+    const hit = D.usersByRole("student").find(u => D.fullName(u).toLowerCase() === s.toLowerCase());
+    if (hit) return hit;
+    const { firstName, lastName } = parseFio(s);
+    return D.usersByRole("student").find(u => u.firstName === firstName && u.lastName === lastName);
+  }
+  function parseStudentsField(str) {
+    return String(str || "").split(/[,;]/).map(s => s.trim()).filter(Boolean).map(findStudentByFio).filter(Boolean);
+  }
+  function assignStudentToGroup(studentId, groupId) {
+    const ex = D.groupMembers.find(m => m.id_user === studentId && m.type === "student");
+    if (ex) ex.id_group = groupId;
+    else D.groupMembers.push({ id_group: groupId, id_user: studentId, type: "student" });
+  }
+  function removeStudentFromGroup(studentId, groupId) {
+    const i = D.groupMembers.findIndex(m => m.id_group === groupId && m.id_user === studentId && m.type === "student");
+    if (i >= 0) D.groupMembers.splice(i, 1);
+  }
+  function addTeacherToGroup(teacherId, groupId) {
+    if (!D.groupMembers.some(m => m.id_group === groupId && m.id_user === teacherId && m.type === "teacher"))
+      D.groupMembers.push({ id_group: groupId, id_user: teacherId, type: "teacher" });
+  }
+  function removeTeacherFromGroup(teacherId, groupId) {
+    const i = D.groupMembers.findIndex(m => m.id_group === groupId && m.id_user === teacherId && m.type === "teacher");
+    if (i >= 0) D.groupMembers.splice(i, 1);
+  }
+  function teacherGroupIds(t, parentOnly) {
+    return D.groupMembers.filter(m => m.id_user === t.id && m.type === "teacher")
+      .map(m => D.groups.find(g => g.id === m.id_group))
+      .filter(g => g && (parentOnly ? !g.id_parent : !!g.id_parent))
+      .map(g => g.id);
+  }
+
+  function myCourses() { return D.courses().filter(c => c.id_hr === hr.id); }
+  function myWorkingGroups() { return D.allWorkingGroups().filter(g => g.id_hr === hr.id); }
+
+  function ensureCourse(name) {
+    const n = String(name || "").trim();
+    if (!n) return null;
+    let c = myCourses().find(x => x.name === n);
+    if (!c) {
+      const id = Math.max(...D.groups.map(g => g.id)) + 1;
+      c = { id, id_parent: null, name: n, id_hr: hr.id, createdAt: new Date().toISOString().slice(0, 10), status: "active" };
+      D.groups.push(c);
+    }
+    return c;
+  }
+
+  function ensureWorkingGroup(name, courseId) {
+    const n = String(name || "").trim();
+    if (!n || !courseId) return null;
+    let g = myWorkingGroups().find(x => x.name === n && x.id_parent === courseId);
+    if (!g) {
+      const id = Math.max(...D.groups.map(g => g.id)) + 1;
+      g = { id, id_parent: courseId, name: n, id_hr: hr.id, createdAt: new Date().toISOString().slice(0, 10), status: "forming" };
+      D.groups.push(g);
+    }
+    return g;
+  }
+
+  function ensureStudentFromRow(row) {
+    const lastName = String(row.last_name || "").trim();
+    const firstName = String(row.first_name || "").trim();
+    const fio = row.fio || [lastName, firstName, row.middle_name].filter(Boolean).join(" ");
+    if (!fio) return null;
+    let s = findStudentByFio(fio);
+    if (s) return s;
+    const parsed = row.fio ? parseFio(row.fio) : { firstName, lastName };
+    const id = Math.max(...D.users.map(u => u.id)) + 1;
+    const curators = D.usersByRole("curator");
+    s = {
+      id, firstName, lastName, id_max: row.id_max || null, phone: row.phone || null,
+      id_role: roleId("student"), status: normalizeStatus(row.status || "active"),
+      id_curator: row.id_curator ? +row.id_curator : curators[0]?.id || null, strikes: 0
+    };
+    D.users.push(s);
+    return s;
+  }
+
+  function pickDefaultGroup() {
+    const list = myWorkingGroups();
+    if (!list.length) { state.selectedGroupId = null; return; }
+    if (!list.some(g => g.id === state.selectedGroupId)) state.selectedGroupId = list[0].id;
+  }
+
+  function teacherDirections(t) {
+    return D.teacherDirectionsFromMeta(t.id);
+  }
+  function teacherWorkGroups(t) {
+    return D.teacherWorkGroupsFromMeta(t.id);
+  }
+
+  function groupTeachers(groupId) {
+    return D.groupTeachersFromLessons(groupId);
+  }
+
+  function localDateStr(d) {
+    return d.toISOString().slice(0, 10);
+  }
+
+  function localDateTimeIso(dateStr, timeStr) {
+    const parts = dateStr.split("-").map(Number);
+    const tp = timeStr.split(":").map(Number);
+    return new Date(parts[0], parts[1] - 1, parts[2], tp[0], tp[1] || 0).toISOString();
+  }
+
+  function teacherOpts() {
+    return D.usersByRole("teacher").map(t => ({ value: String(t.id), label: D.fullName(t) }));
+  }
+
+  function workingGroupOpts() {
+    return myWorkingGroups().map(g => {
+      const course = D.courseOfGroup(g.id);
+      return { value: String(g.id), label: course ? `${course.name} · ${g.name}` : g.name };
+    });
+  }
+
+  function clearLessonAssignCmps() {
+    Object.values(lessonAssignCmps).forEach(c => c?.destroy?.());
+    Object.keys(lessonAssignCmps).forEach(k => delete lessonAssignCmps[k]);
+  }
+
+  function closeAssignTeacherModal() {
+    $("#assignTeacherOverlay").classList.remove("open");
+    clearLessonAssignCmps();
+    state.assignTeacher = null;
+  }
+
+  function openAssignTeacherModal(opts) {
+    clearLessonAssignCmps();
+    state.assignTeacher = opts || {};
+    const tOpts = teacherOpts();
+    const gOpts = workingGroupOpts();
+    if (!tOpts.length) return showToast("Сначала добавьте преподавателей", "warning");
+    if (!gOpts.length) return showToast("Сначала создайте рабочую группу", "warning");
+    lessonAssignCmps.teacher = UI.createSearchSelect($("#laTeacher"), {
+      options: tOpts,
+      value: String(opts?.teacherId || tOpts[0]?.value || ""),
+      placeholder: "Поиск преподавателя…"
+    });
+    lessonAssignCmps.group = UI.createSearchSelect($("#laGroup"), {
+      options: gOpts,
+      value: String(opts?.groupId || gOpts[0]?.value || ""),
+      placeholder: "Поиск группы…"
+    });
+    lessonAssignCmps.type = UI.createSelect($("#laType"), {
+      options: [
+        { value: "lecture", label: "Лекция" },
+        { value: "practice", label: "Практика" },
+      ],
+      value: "lecture",
+    });
+    const now = new Date();
+    $("#laDate").value = localDateStr(now);
+    $("#laTime").value = "10:00";
+    $("#laPlace").value = "";
+    $("#laTitle").value = "";
+    $("#assignTeacherOverlay").classList.add("open");
+  }
+
+  async function saveAssignTeacher() {
+    const teacherId = lessonAssignCmps.teacher?.getValue?.();
+    const groupId = lessonAssignCmps.group?.getValue?.();
+    const date = $("#laDate").value;
+    const time = $("#laTime").value;
+    const place = $("#laPlace").value.trim() || null;
+    const lessonType = lessonAssignCmps.type?.getValue?.() || "lecture";
+    const title = $("#laTitle").value.trim() || null;
+    if (!teacherId || !groupId || !date || !time) return showToast("Заполните преподавателя, группу, дату и время", "warning");
+    try {
+      await HrApi.createLesson({
+        group_id: groupId,
+        teacher_id: teacherId,
+        starts_at: localDateTimeIso(date, time),
+        place,
+        lesson_type: lessonType,
+        title,
+      });
+      await reloadData();
+      showToast("Преподаватель назначен через занятие", "success");
+      closeAssignTeacherModal();
+      renderGroups();
+      renderTeachers();
+    } catch (err) {
+      showToast(err.message || "Ошибка создания занятия", "error");
+    }
+  }
+
+  let toastTimer;
+  function showToast(msg, type) {
+    const t = $("#toastTop");
+    t.textContent = msg;
+    t.className = "toast-top show " + (type || "info");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = "toast-top"; }, 4500);
+  }
+
+  function normalizeStatus(v) {
+    const s = String(v || "").toLowerCase().trim();
+    return ["inactive", "не активен", "неактивен"].includes(s) ? "inactive" : "active";
+  }
+  function roleId(code) { return D.roles.find(r => r.code === code)?.id; }
+  function parseFio(fio) {
+    const parts = String(fio || "").trim().split(/\s+/);
+    return { lastName: parts.pop() || "", firstName: parts.join(" ") || "" };
+  }
+  function downloadWorkbook(rows, fn) {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Данные");
+    XLSX.writeFile(wb, fn);
+  }
+
+  function studentStrikeFilterKey(u) {
+    const strikes = studentStrikes(u.id);
+    if (strikes.some(s => s.status === "appealed")) return "appealed";
+    if ((u.strikes || 0) >= 3) return "max";
+    if ((u.strikes || 0) > 0) return "active";
+    return "none";
+  }
+
+  function filterStudents() {
+    const q = (state.search.students || "").toLowerCase();
+    const f = state.filters.students;
+    return D.usersByRole("student").filter(u => {
+      if (f.status && u.status !== f.status) return false;
+      if (f.strike && studentStrikeFilterKey(u) !== f.strike) return false;
+      const wg = D.studentWorkGroup(u.id);
+      const course = wg ? D.courseOfGroup(wg.id) : null;
+      if (f.course && (!course || course.name !== f.course)) return false;
+      if (f.group) {
+        const groups = D.studentGroups(u.id);
+        if (f.group === "__none__" && groups.length) return false;
+        if (f.group !== "__none__" && !groups.some(g => g.name === f.group)) return false;
+      }
+      const groupNames = D.studentGroups(u.id).map(g => g.name).join(" ");
+      const hay = [D.fullName(u), u.phone, u.id_max, groupNames, D.fullName(D.userById(u.id_curator))].join(" ").toLowerCase();
+      return !q || hay.includes(q);
+    });
+  }
+
+  const STRIKE_STATUS_LABELS = { active: "активен", appealed: "апелляция", revoked: "отменён" };
+  const STRIKE_REASON_LABELS = {
+    late: "Опоздание",
+    absent: "Пропуск",
+    manual: "Вручную",
+    discipline: "Дисциплина",
+  };
+
+  function fmtStrikeDate(value) {
+    if (!value) return "—";
+    return new Date(value).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function studentStrikes(userId) {
+    return (D.strikes || [])
+      .filter(s => s.user_id === userId)
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  }
+
+  function openStrikeHistory(userId) {
+    const u = D.userById(userId);
+    const list = studentStrikes(userId);
+    $("#strikeHistoryTitle").textContent = "История страйков";
+    $("#strikeHistorySubtitle").textContent = u ? `${D.fullName(u)} · активных: ${u.strikes}/3` : "";
+    const body = $("#strikeHistoryBody");
+    if (!list.length) {
+      body.innerHTML = '<div class="empty">У ученика пока нет страйков</div>';
+    } else {
+      body.innerHTML = `<div class="table-wrap"><table class="entity-table strike-history-table"><thead><tr>
+        <th>№</th><th>Статус</th><th>Причина</th><th>Группа</th><th>Дата</th><th>Апелляция / вердикт</th>
+      </tr></thead><tbody>${list.map(s => {
+        const sc = s.status === "active" ? "red" : s.status === "appealed" ? "yellow" : "gray";
+        let extra = "—";
+        if (s.status === "appealed" && s.appeal_reason) {
+          extra = `<span class="strike-extra appealed">${s.appeal_reason}</span>`;
+        } else if (s.status === "revoked") {
+          extra = `<span class="strike-extra revoked">Отменён${s.resolved_at ? " · " + fmtStrikeDate(s.resolved_at) : ""}</span>`;
+        }
+        return `<tr>
+          <td><span class="tag ${sc}">${s.strike_number}/3</span></td>
+          <td><span class="tag ${sc}">${STRIKE_STATUS_LABELS[s.status] || s.status}</span></td>
+          <td>${STRIKE_REASON_LABELS[s.reason] || s.reason || "—"}</td>
+          <td>${s.group_name || "—"}</td>
+          <td>${fmtStrikeDate(s.created_at)}</td>
+          <td>${extra}</td>
+        </tr>`;
+      }).join("")}</tbody></table></div>`;
+    }
+    $("#strikeHistoryOverlay").classList.add("open");
+  }
+
+  function closeStrikeHistory() {
+    $("#strikeHistoryOverlay").classList.remove("open");
+  }
+
+  function setBanReasonHint(text) {
+    const hint = $("#banReasonHint");
+    if (!hint) return;
+    if (!text) {
+      hint.style.display = "none";
+      hint.textContent = "";
+      return;
+    }
+    hint.style.display = "";
+    hint.textContent = text;
+  }
+
+  function openBanReasonModal(userId, prevStatus, statusSelect, opts = {}) {
+    const u = D.userById(userId);
+    state.banModal = {
+      userId,
+      prevStatus,
+      statusSelect,
+      mode: opts.mode || "immediate",
+      revertOnCancel: opts.revertOnCancel !== false,
+    };
+    $("#banReasonTitle").textContent = opts.title || "Причина блокировки";
+    $("#banReasonSubtitle").textContent = u ? D.fullName(u) : "";
+    const pending = state.edit?.id === userId ? state.edit.pendingBanReason : null;
+    const prev = pending || (u && u.ban_reason && u.ban_reason !== "3 страйка" ? u.ban_reason : "ручной бан");
+    $("#banReasonLabel").textContent = "Комментарий";
+    $("#banReasonInput").placeholder = "Укажите причину блокировки";
+    setBanReasonHint("Комментарий сохранится в поле «Причина бана» и будет виден в таблице учеников.");
+    $("#banReasonInput").value = prev;
+    const saveBtn = $("#banReasonSaveBtn");
+    if (saveBtn) {
+      saveBtn.textContent = opts.mode === "defer" ? "Сохранить комментарий" : "Заблокировать";
+      saveBtn.className = "btn danger";
+    }
+    $("#banReasonOverlay").classList.add("open");
+    setTimeout(() => $("#banReasonInput")?.focus(), 0);
+  }
+
+  function openStrikeCommentModal(userId, action) {
+    const u = D.userById(userId);
+    const isAdd = action === "add";
+    state.banModal = { userId, mode: isAdd ? "strike_add" : "strike_revoke", revertOnCancel: false };
+    $("#banReasonTitle").textContent = isAdd ? "Выдача страйка" : "Снятие страйка";
+    $("#banReasonSubtitle").textContent = u ? `${D.fullName(u)} · сейчас ${u.strikes}/3` : "";
+    $("#banReasonLabel").textContent = isAdd ? "Причина страйка" : "Комментарий к снятию";
+    $("#banReasonInput").value = "";
+    $("#banReasonInput").placeholder = isAdd
+      ? "Например: опоздание, пропуск занятия"
+      : "Укажите причину снятия страйка";
+    setBanReasonHint(isAdd ? "Комментарий будет сохранён в истории страйков ученика." : "");
+    const saveBtn = $("#banReasonSaveBtn");
+    if (saveBtn) {
+      saveBtn.textContent = isAdd ? "Выдать страйк" : "Снять страйк";
+      saveBtn.className = isAdd ? "btn danger" : "btn secondary";
+    }
+    $("#banReasonOverlay").classList.add("open");
+    setTimeout(() => $("#banReasonInput")?.focus(), 0);
+  }
+
+  function updateEdBanReasonPreview(text) {
+    const preview = $("#edBanReasonPreview");
+    if (preview) preview.textContent = text || "ручной бан";
+    const wrap = $("#edBanWrap");
+    if (wrap && state.editCmps.status?.getValue?.() === "inactive") wrap.style.display = "";
+  }
+
+  function closeBanReasonModal(revert = true) {
+    const m = state.banModal;
+    if (revert && m?.revertOnCancel && m?.statusSelect) m.statusSelect.setValue(m.prevStatus);
+    state.banModal = null;
+    $("#banReasonOverlay").classList.remove("open");
+  }
+
+  async function confirmBanReason() {
+    const m = state.banModal;
+    if (!m) return;
+    const text = $("#banReasonInput").value.trim();
+    if (m.mode === "defer") {
+      if (!text) return showToast("Укажите комментарий блокировки", "warning");
+      if (state.edit) state.edit.pendingBanReason = text;
+      updateEdBanReasonPreview(text);
+      closeBanReasonModal(false);
+      return;
+    }
+    if (m.mode === "strike_add") {
+      if (!text) return showToast("Укажите причину страйка", "warning");
+      try {
+        await HrApi.addStrike(m.userId, text);
+        await reloadData();
+        closeBanReasonModal(false);
+        const u = D.userById(m.userId);
+        showToast(`Страйк выдан · ${D.fullName(u)}: ${u.strikes}/3`, "warning");
+        renderStudents();
+      } catch (err) {
+        showToast(err.message || "Ошибка страйка", "error");
+      }
+      return;
+    }
+    if (m.mode === "strike_revoke") {
+      if (!text) return showToast("Укажите комментарий к снятию", "warning");
+      try {
+        await HrApi.revokeStrike(m.userId, text);
+        await reloadData();
+        closeBanReasonModal(false);
+        const u = D.userById(m.userId);
+        showToast(`Страйк снят · ${D.fullName(u)}: ${u.strikes}/3`, "info");
+        renderStudents();
+      } catch (err) {
+        showToast(err.message || "Ошибка снятия страйка", "error");
+      }
+      return;
+    }
+    const banText = text || "ручной бан";
+    try {
+      await HrApi.patchUserStatus(m.userId, "inactive", banText);
+      await reloadData();
+      closeBanReasonModal(false);
+      showToast(`Статус ${D.fullName(D.userById(m.userId))}: не активен`, "success");
+      renderStudents();
+    } catch (err) {
+      showToast(err.message || "Ошибка сохранения", "error");
+    }
+  }
+
+  function bindStudentsRowActions(panel, slice) {
+    slice.forEach(u => {
+      const el = panel.querySelector(`[data-status-cell="${u.id}"]`);
+      if (!el) return;
+      const selectCmp = UI.createSelect(el, {
+        options: statusOpts(), value: u.status,
+        onChange: async v => {
+          if (v === "inactive" && u.status !== "inactive") {
+            openBanReasonModal(u.id, u.status, selectCmp);
+            return;
+          }
+          try {
+            await HrApi.patchUserStatus(u.id, v);
+            await reloadData();
+            showToast(`Статус ${D.fullName(D.userById(u.id))}: ${D.statusLabel[v]}`, "success");
+            renderStudents();
+          } catch (err) {
+            showToast(err.message || "Ошибка сохранения", "error");
+            selectCmp.setValue(u.status);
+          }
+        }
+      });
+      tableSelectCmps.push(selectCmp);
+    });
+    panel.querySelectorAll("[data-strike-plus]").forEach(btn => btn.onclick = () => openStrikeCommentModal(btn.dataset.strikePlus, "add"));
+    panel.querySelectorAll("[data-strike-minus]").forEach(btn => btn.onclick = () => openStrikeCommentModal(btn.dataset.strikeMinus, "revoke"));
+    panel.querySelectorAll("[data-strike-history]").forEach(btn => btn.onclick = () => openStrikeHistory(btn.dataset.strikeHistory));
+    panel.querySelectorAll("[data-edit-student]").forEach(btn => btn.onclick = () => openUserEdit(btn.dataset.editStudent));
+    bindPagination(panel, "students", renderStudentsBody);
+  }
+
+  function renderStudentsBody() {
+    const panel = $("#panel-students");
+    const host = panel.querySelector("#studentsListHost");
+    if (!host) {
+      renderStudents(true);
+      return;
+    }
+    destroyCmps(tableSelectCmps);
+    const list = filterStudents();
+    const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (state.pages.students > pages) state.pages.students = pages;
+    const slice = list.slice((state.pages.students - 1) * PAGE_SIZE, state.pages.students * PAGE_SIZE);
+    host.innerHTML = `${slice.length ? `<div class="table-wrap"><table><thead><tr>
+        <th>ФИО</th><th>ID MAX</th><th>Телефон</th><th>Группа</th><th>Куратор</th><th>Страйки</th><th>Статус</th><th>Причина бана</th><th></th>
+      </tr></thead><tbody>
+      ${slice.map(u => {
+        const groups = D.studentGroups(u.id);
+        const groupLabel = groups.length ? groups.map(g => g.name).join(", ") : "—";
+        const sc = u.strikes >= 2 ? "red" : u.strikes ? "yellow" : "gray";
+        const maxCls = u.id_max ? "max-id" : "";
+        const banLabel = u.status === "inactive" && u.ban_reason ? u.ban_reason : "—";
+        const banCls = u.ban_reason === "3 страйка" ? "yellow" : u.ban_reason ? "red" : "gray";
+        return `<tr>
+          <td><div class="student-cell"><span class="student-avatar">${initials(u)}</span><strong>${D.fullName(u)}</strong></div></td>
+          <td>${u.id_max ? `<span class="max-id ${maxCls}">${u.id_max}</span>` : "—"}</td>
+          <td>${u.phone ? `<span class="field-phone-display">${HrFields.formatPhoneDisplay(u.phone) || u.phone}</span>` : "—"}</td>
+          <td>${groupLabel}</td>
+          <td>${D.fullName(D.userById(u.id_curator))}</td>
+          <td><div class="strike-cell">
+            <button type="button" class="btn small secondary icon-only strike-btn" data-strike-minus="${u.id}" ${u.strikes <= 0 ? "disabled" : ""} aria-label="Снять страйк" title="Снять страйк">${I("minus")}</button>
+            <span class="tag ${sc} strike-count-tag" data-strike-history="${u.id}" title="История страйков">${u.strikes}/3</span>
+            <button type="button" class="btn small danger icon-only strike-btn" data-strike-plus="${u.id}" ${u.strikes >= 3 ? "disabled" : ""} aria-label="Выдать страйк" title="Выдать страйк">${I("plus")}</button>
+            <button type="button" class="btn small secondary icon-only strike-btn" data-strike-history="${u.id}" aria-label="История страйков" title="История страйков">${I("clock")}</button>
+          </div></td>
+          <td class="cell-ui"><div data-status-cell="${u.id}"></div></td>
+          <td>${banLabel !== "—" ? `<span class="tag ${banCls}">${banLabel}</span>` : "—"}</td>
+          <td><button type="button" class="btn small secondary" data-edit-student="${u.id}">${I("pencil")}Изменить</button></td>
+        </tr>`;
+      }).join("")}
+      </tbody></table></div>` : `<div class="empty">Ничего не найдено</div>`}
+      ${paginationHtml(list.length, state.pages.students, "students")}`;
+    bindStudentsRowActions(panel, slice);
+  }
+
+  function renderStudents(refreshShell = false) {
+    const panel = $("#panel-students");
+    if (refreshShell || !panel.querySelector("#studentsListHost")) {
+      destroyCmps(tableSelectCmps);
+      panel.innerHTML = `<div class="card"><h2>Ученики</h2>
+      <div class="toolbar">
+        <input type="search" id="searchStudents" placeholder="Поиск по ФИО, телефону, MAX" value="${state.search.students || ""}">
+        <div id="filterStCourse"></div>
+        <div id="filterStGroup"></div>
+        <div id="filterStStatus"></div>
+        <div id="filterStStrike"></div>
+        <button type="button" class="btn" id="addStudentsBtn">${I("user-plus")}Добавить учеников</button>
+        <button type="button" class="btn secondary" id="exportStudents">${I("download")}Экспорт</button>
+      </div>
+      <div id="studentsListHost"></div>
+    </div>`;
+      mountToolbarFilters("students");
+      $("#addStudentsBtn").onclick = () => openModal("students");
+      $("#exportStudents").onclick = () => exportUsers("students");
+    }
+    renderStudentsBody();
+  }
+
+  function mountToolbarFilters(tab) {
+    if (tab === "students") {
+      const courseOpts = [{ value: "", label: "Все направления" }, ...myCourses().map(c => ({ value: c.name, label: c.name }))];
+      const groupOpts = [{ value: "", label: "Все группы" }, { value: "__none__", label: "Без группы" }, ...myWorkingGroups().map(g => ({ value: g.name, label: g.name }))];
+      const statusOpts = [{ value: "", label: "Все статусы" }, { value: "active", label: "Активен" }, { value: "inactive", label: "Не активен" }];
+      const strikeOpts = [
+        { value: "", label: "Все страйки" },
+        { value: "none", label: "Без страйков" },
+        { value: "active", label: "Есть страйки" },
+        { value: "appealed", label: "Апелляция" },
+        { value: "max", label: "3 страйка" },
+      ];
+      filterCmps.stCourse?.destroy?.();
+      filterCmps.stGroup?.destroy?.();
+      filterCmps.stStatus?.destroy?.();
+      filterCmps.stStrike?.destroy?.();
+      filterCmps.stCourse = UI.createSelect($("#filterStCourse"), { label: "", options: courseOpts, value: state.filters.students.course, onChange: v => { state.filters.students.course = v; state.pages.students = 1; renderStudentsBody(); } });
+      filterCmps.stGroup = UI.createSelect($("#filterStGroup"), { label: "", options: groupOpts, value: state.filters.students.group, onChange: v => { state.filters.students.group = v; state.pages.students = 1; renderStudentsBody(); } });
+      filterCmps.stStatus = UI.createSelect($("#filterStStatus"), { label: "", options: statusOpts, value: state.filters.students.status, onChange: v => { state.filters.students.status = v; state.pages.students = 1; renderStudentsBody(); } });
+      filterCmps.stStrike = UI.createSelect($("#filterStStrike"), { label: "", options: strikeOpts, value: state.filters.students.strike, onChange: v => { state.filters.students.strike = v; state.pages.students = 1; renderStudentsBody(); } });
+    }
+    if (tab === "attendance" && $("#filterAttGroup")) {
+      const groupOpts = [{ value: "", label: "Все группы" }, ...myWorkingGroups().map(g => ({ value: String(g.id), label: g.name }))];
+      filterCmps.attGroup?.destroy?.();
+      filterCmps.attGroup = UI.createSelect($("#filterAttGroup"), { label: "", options: groupOpts, value: state.filters.attendance.group, onChange: v => { state.filters.attendance.group = v; state.pages.attendance = 1; renderAttendanceBody(); } });
+    }
+  }
+
+  function paginationHtml(total, page, key) {
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    let html = `<span>${total} записей · стр. ${page}/${pages}</span>`;
+    for (let p = 1; p <= pages; p++) {
+      if (pages > 7 && p > 2 && p < pages - 1 && Math.abs(p - page) > 1) {
+        if (p === 3 || p === pages - 2) html += `<span>…</span>`;
+        continue;
+      }
+      html += `<button type="button" class="${p === page ? "active" : ""}" data-page="${p}" data-pkey="${key}">${p}</button>`;
+    }
+    return `<div class="pagination">${html}</div>`;
+  }
+  function bindPagination(panel, key, renderFn) {
+    panel.querySelectorAll(`[data-pkey="${key}"]`).forEach(btn => btn.onclick = () => { state.pages[key] = +btn.dataset.page; renderFn(); });
+  }
+
+  function onPanelSearchInput(e) {
+    const handlers = {
+      searchStudents: ["students", "students", renderStudentsBody],
+      searchTeachers: ["teachers", "teachers", renderTeachersBody],
+      searchCurators: ["curators", "curators", renderCuratorsBody],
+      searchAttendance: ["attendance", "attendance", renderAttendanceBody],
+      searchStrikes: ["strikes", "strikes", renderStrikesBody],
+    };
+    const cfg = handlers[e.target.id];
+    if (!cfg) return;
+    state.search[cfg[0]] = e.target.value;
+    state.pages[cfg[1]] = 1;
+    cfg[2]();
+  }
+
+  function exportUsers(key) {
+    const cfg = MODAL_CONFIG[key];
+    const users = key === "students" ? filterStudents() : D.usersByRole(cfg.roleCode);
+    const rows = [cfg.fields.map(f => fieldLabel(f)), ...users.map(u => cfg.fields.map(f => {
+      if (f === "last_name") return u.lastName;
+      if (f === "first_name") return u.firstName;
+      if (f === "middle_name") return u.middleName || "";
+      if (f === "status") return D.statusLabel[u.status];
+      if (f === "id_curator") return u.id_curator || "";
+      return u[f] || "";
+    }))];
+    downloadWorkbook(rows, key + ".xlsx");
+    showToast("Экспортировано " + users.length + " записей", "success");
+  }
+
+  async function createDirection(name) {
+    const n = String(name || "").trim();
+    if (!n) return showToast("Введите название направления", "warning");
+    if (myCourses().some(c => c.name.toLowerCase() === n.toLowerCase())) return showToast("Направление уже существует", "warning");
+    try {
+      const created = await HrApi.createGroup({ name: n, id_parent: null, status: "active" });
+      await reloadData();
+      state.fsOpen[created.id] = true;
+      state.addDirForm = false;
+      state.dirPopoverOpen = false;
+      showToast(`Направление «${n}» создано`, "success");
+      renderGroups();
+    } catch (err) {
+      showToast(err.message || "Ошибка создания", "error");
+    }
+  }
+
+  function renderGroupDetailHtml(g) {
+    if (!g) return `<div class="empty" style="padding:48px 24px">Выберите группу в меню или создайте новую</div>`;
+    const course = D.courseOfGroup(g.id);
+    const students = D.groupStudents(g.id);
+    const teachers = groupTeachers(g.id);
+    const assignedHr = D.userById(g.id_hr);
+    const stLabel = g.status === "active" ? "активна" : "формируется";
+    return `<div class="group-detail-hero">
+      <div class="group-detail-head">
+        <div>
+          <h3>${g.name}</h3>
+          <div class="group-detail-meta">
+            <span class="entity-pill blue">${course?.name || "—"}</span>
+            <span class="entity-pill ${g.status === "active" ? "green" : ""}">${stLabel}</span>
+            <span class="entity-pill">${students.length} учеников</span>
+            ${teachers.length ? `<span class="entity-pill">${teachers.length} преподав.</span>` : ""}
+            ${assignedHr ? `<span class="hr-badge">HR · ${D.fullName(assignedHr)}</span>` : ""}
+          </div>
+        </div>
+        <div class="group-detail-actions">
+          <button type="button" class="btn secondary" data-assign-teacher-group="${g.id}">${I("user-plus")}Назначить преподавателя</button>
+          <button type="button" class="btn secondary" data-edit-group="${g.id}">${I("pencil")}Редактировать</button>
+        </div>
+      </div>
+    </div>
+    <div class="group-detail-body">
+    ${teachers.length ? `<div class="group-teachers-block" style="margin-bottom:16px">
+      <h4 style="margin:0 0 8px;font-size:14px">Преподаватели (по занятиям)</h4>
+      <div class="group-teachers-list">${teachers.map(t => `<span class="curator-badge">${t.name}</span>`).join(" ")}</div>
+    </div>` : `<p class="stat-mini" style="margin:0 0 16px">Преподаватели не назначены — создайте занятие</p>`}
+    ${students.length ? `<div class="table-wrap"><table class="entity-table"><thead><tr>
+      <th>Ученик</th><th>ID MAX</th><th>Телефон</th><th>Куратор</th><th>Страйки</th><th>Статус</th>
+    </tr></thead><tbody>${students.map(s => {
+      const cur = D.userById(s.id_curator);
+      const sc = s.strikes >= 2 ? "red" : s.strikes ? "yellow" : "gray";
+      return `<tr>
+        <td><div class="student-cell"><span class="student-avatar">${initials(s)}</span>${D.fullName(s)}</div></td>
+        <td>${s.id_max ? `<span class="max-id">${s.id_max}</span>` : "—"}</td>
+        <td>${s.phone || "—"}</td>
+        <td>${cur ? `<span class="curator-badge">${D.fullName(cur)}</span>` : "—"}</td>
+        <td><span class="tag ${sc}">${s.strikes}/3</span></td>
+        <td><span class="tag ${s.status === "active" ? "green" : "gray"}">${D.statusLabel[s.status]}</span></td>
+      </tr>`;
+    }).join("")}</tbody></table></div>` : `<div class="nested-empty">В группе пока нет учеников</div>`}
+    </div>`;
+  }
+
+  function renderFsTree() {
+    const courses = myCourses();
+    return courses.map(c => {
+      const wgs = D.workingGroups(c.id).filter(g => g.id_hr === hr.id);
+      const open = state.fsOpen[c.id] === true;
+      return `<div class="fs-folder${open ? " open" : ""}" data-folder="${c.id}">
+        <div class="fs-folder-head">
+          <span class="fs-folder-toggle" data-fs-toggle="${c.id}">▶</span>
+          <span class="fs-folder-name" data-fs-toggle="${c.id}">${c.name}</span>
+          <span class="nested-count">${wgs.length}</span>
+          <button type="button" class="fs-add-btn" data-add-group-dir="${c.id}" title="Добавить группу" aria-label="Добавить группу">${I("plus")}</button>
+        </div>
+        <div class="fs-children">${wgs.map(g => `
+          <div class="fs-file${state.selectedGroupId === g.id ? " active" : ""}" data-pick-group="${g.id}">${g.name}</div>
+        `).join("") || `<div class="nested-empty" style="padding:8px;font-size:12px">Нет групп</div>`}</div>
+      </div>`;
+    }).join("") || `<div class="nested-empty">Нет направлений</div>`;
+  }
+
+  function renderGroups() {
+    const panel = $("#panel-groups");
+    pickDefaultGroup();
+    const g = state.selectedGroupId ? D.groups.find(x => x.id === state.selectedGroupId) : null;
+    const isSide = state.groupsView === "side";
+
+    const dirFormHtml = state.addDirForm ? `<div class="dir-quick-form">
+      <input type="text" id="newDirName" placeholder="Название направления">
+      <div class="row">
+        <button type="button" class="btn small" id="saveDirBtn">${I("check")}Создать</button>
+        <button type="button" class="btn small secondary" id="cancelDirBtn">${I("x")}Отмена</button>
+      </div>
+    </div>` : "";
+
+    panel.innerHTML = `<div class="card">
+      <div class="groups-card-head">
+        <h2>Рабочие группы · ${myWorkingGroups().length}</h2>
+        <div class="layout-switch" title="Режим навигации">
+          <button type="button" class="${state.groupsView === "top" ? "active" : ""}" data-view="top" title="Верхнее меню">
+            <span class="layout-icon top"></span>
+          </button>
+          <button type="button" class="${state.groupsView === "side" ? "active" : ""}" data-view="side" title="Боковое меню">
+            <span class="layout-icon side"></span>
+          </button>
+        </div>
+      </div>
+      ${isSide ? "" : `<div class="groups-top-tree">
+        <div class="top-tree-actions">
+          <button type="button" class="btn secondary" id="addDirectionBtn">${I("folder-plus")}Направление</button>
+        </div>
+        ${dirFormHtml}
+        <div class="fs-tree mini-hier">${renderFsTree()}</div>
+      </div>`}
+      <div class="groups-layout${isSide ? " side" : ""}">
+        ${isSide ? `<aside class="groups-sidebar">
+          <div class="sidebar-actions">
+            <button type="button" class="btn secondary" id="addDirectionBtnSide">${I("folder-plus")}Направление</button>
+          </div>
+          ${dirFormHtml}
+          <div class="fs-tree">${renderFsTree()}</div>
+        </aside>` : ""}
+        <div class="group-detail" id="groupDetail">${renderGroupDetailHtml(g)}</div>
+      </div>
+    </div>`;
+
+    panel.querySelectorAll("[data-view]").forEach(btn => btn.onclick = () => {
+      state.groupsView = btn.dataset.view;
+      state.dirPopoverOpen = false;
+      state.fsOpen = {};
+      renderGroups();
+    });
+    const bindDirForm = (nameId, saveId, cancelId, onCancel) => {
+      $(saveId)?.addEventListener("click", (e) => { e.stopPropagation(); createDirection($(nameId).value); });
+      $(cancelId)?.addEventListener("click", (e) => { e.stopPropagation(); onCancel(); renderGroups(); });
+      $(nameId)?.addEventListener("keydown", e => { if (e.key === "Enter") createDirection($(nameId).value); });
+      $(nameId)?.addEventListener("click", e => e.stopPropagation());
+    };
+    bindDirForm("#newDirName", "#saveDirBtn", "#cancelDirBtn", () => { state.addDirForm = false; });
+    $("#addDirectionBtn")?.addEventListener("click", () => { state.addDirForm = !state.addDirForm; renderGroups(); });
+    $("#addDirectionBtnSide")?.addEventListener("click", () => { state.addDirForm = !state.addDirForm; renderGroups(); });
+    panel.querySelectorAll("[data-edit-group]").forEach(btn => btn.onclick = () => openGroupEditor(btn.dataset.editGroup));
+    panel.querySelectorAll("[data-assign-teacher-group]").forEach(btn => btn.onclick = () => openAssignTeacherModal({ groupId: btn.dataset.assignTeacherGroup }));
+    panel.querySelectorAll("[data-pick-group]").forEach(el => el.onclick = () => {
+      state.selectedGroupId = el.dataset.pickGroup;
+      const course = D.courseOfGroup(state.selectedGroupId);
+      if (course) state.fsOpen[course.id] = true;
+      renderGroups();
+    });
+    panel.querySelectorAll("[data-fs-toggle]").forEach(el => el.onclick = (e) => {
+      e.stopPropagation();
+      const id = el.dataset.fsToggle;
+      state.fsOpen[id] = !state.fsOpen[id];
+      renderGroups();
+    });
+    panel.querySelectorAll("[data-add-group-dir]").forEach(btn => btn.onclick = (e) => {
+      e.stopPropagation();
+      openGroupEditor(null, btn.dataset.addGroupDir);
+    });
+    if (state.addDirForm) $("#newDirName")?.focus();
+  }
+
+  function filterTeachers() {
+    const q = (state.search.teachers || "").toLowerCase();
+    const f = state.filters.teachers;
+    return D.usersByRole("teacher").filter(t => {
+      if (f.status && t.status !== f.status) return false;
+      const hay = [D.fullName(t), t.phone, t.id_max, ...teacherDirections(t), ...teacherWorkGroups(t)].join(" ").toLowerCase();
+      return !q || hay.includes(q);
+    });
+  }
+
+  function filterCurators() {
+    const q = (state.search.curators || "").toLowerCase();
+    const f = state.filters.curators;
+    return D.usersByRole("curator").filter(c => {
+      if (f.status && c.status !== f.status) return false;
+      const wards = curatorWardNames(c.id);
+      const hay = [D.fullName(c), c.phone, c.id_max, ...wards].join(" ").toLowerCase();
+      return !q || hay.includes(q);
+    });
+  }
+
+  function renderTeachersBody() {
+    const panel = $("#panel-teachers");
+    const host = panel.querySelector("#teachersListHost");
+    if (!host) {
+      renderTeachers(true);
+      return;
+    }
+    const list = filterTeachers();
+    const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (state.pages.teachers > pages) state.pages.teachers = pages;
+    const slice = list.slice((state.pages.teachers - 1) * PAGE_SIZE, state.pages.teachers * PAGE_SIZE);
+    host.innerHTML = `${slice.length ? `<div class="table-wrap"><table><thead><tr>
+        <th>ФИО</th><th>ID MAX</th><th>Телефон</th><th>Направления</th><th>Рабочие группы</th><th>Статус</th><th></th>
+      </tr></thead><tbody>
+      ${slice.map(t => `<tr>
+        <td><div class="student-cell"><span class="student-avatar">${initials(t)}</span><strong>${D.fullName(t)}</strong></div></td>
+        <td>${t.id_max ? `<span class="max-id">${t.id_max}</span>` : "—"}</td>
+        <td>${t.phone ? `<span class="field-phone-display">${HrFields.formatPhoneDisplay(t.phone) || t.phone}</span>` : "—"}</td>
+        <td>${teacherDirections(t).join(", ") || "—"}</td>
+        <td>${teacherWorkGroups(t).join(", ") || "—"}</td>
+        <td><span class="tag ${t.status === "active" ? "green" : "gray"}">${D.statusLabel[t.status]}</span></td>
+        <td class="row-actions">
+          <button type="button" class="btn small secondary" data-assign-teacher="${t.id}">${I("user-plus")}На группу</button>
+          <button type="button" class="btn small secondary" data-edit-user="${t.id}">${I("pencil")}Изменить</button>
+        </td>
+      </tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty">Ничего не найдено</div>`}
+      ${paginationHtml(list.length, state.pages.teachers, "teachers")}`;
+    panel.querySelectorAll("[data-edit-user]").forEach(btn => btn.onclick = () => openUserEdit(btn.dataset.editUser));
+    panel.querySelectorAll("[data-assign-teacher]").forEach(btn => btn.onclick = () => openAssignTeacherModal({ teacherId: btn.dataset.assignTeacher }));
+    bindPagination(panel, "teachers", renderTeachersBody);
+  }
+
+  function renderTeachers(refreshShell = false) {
+    const panel = $("#panel-teachers");
+    if (refreshShell || !panel.querySelector("#teachersListHost")) {
+      panel.innerHTML = `<div class="card"><h2>Преподаватели</h2>
+      <p class="stat-mini" style="margin:0 0 14px">Все преподаватели системы. Направления и группы — по занятиям в ваших группах.</p>
+      <div class="toolbar">
+        <input type="search" id="searchTeachers" placeholder="Поиск по ФИО, телефону, MAX" value="${state.search.teachers || ""}">
+        <div id="filterTchStatus"></div>
+        <button type="button" class="btn" id="addTeachersBtn">${I("user-plus")}Добавить преподавателей</button>
+        <button type="button" class="btn secondary" id="exportTeachers">${I("download")}Экспорт</button>
+      </div>
+      <div id="teachersListHost"></div>
+    </div>`;
+      const tchStatusOpts = [{ value: "", label: "Все статусы" }, { value: "active", label: "Активен" }, { value: "inactive", label: "Не активен" }];
+      filterCmps.tchStatus?.destroy?.();
+      filterCmps.tchStatus = UI.createSelect($("#filterTchStatus"), {
+        label: "", options: tchStatusOpts, value: state.filters.teachers.status,
+        onChange: v => { state.filters.teachers.status = v; state.pages.teachers = 1; renderTeachersBody(); }
+      });
+      $("#addTeachersBtn").onclick = () => openModal("teachers");
+      $("#exportTeachers").onclick = () => exportUsers("teachers");
+    }
+    renderTeachersBody();
+  }
+
+  function renderCuratorsBody() {
+    const panel = $("#panel-curators");
+    const host = panel.querySelector("#curatorsListHost");
+    if (!host) {
+      renderCurators(true);
+      return;
+    }
+    const list = filterCurators();
+    const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (state.pages.curators > pages) state.pages.curators = pages;
+    const slice = list.slice((state.pages.curators - 1) * PAGE_SIZE, state.pages.curators * PAGE_SIZE);
+    host.innerHTML = `${slice.length ? `<div class="table-wrap"><table><thead><tr>
+        <th>ФИО</th><th>ID MAX</th><th>Телефон</th><th>Подопечные</th><th>Статус</th><th></th>
+      </tr></thead><tbody>
+      ${slice.map(c => {
+        const wards = curatorWardNames(c.id);
+        const wardLabel = wards.length ? `${wards.length}: ${wards.slice(0, 3).join(", ")}${wards.length > 3 ? "…" : ""}` : "—";
+        return `<tr>
+          <td><div class="student-cell"><span class="student-avatar">${initials(c)}</span><strong>${D.fullName(c)}</strong></div></td>
+          <td>${c.id_max ? `<span class="max-id">${c.id_max}</span>` : "—"}</td>
+          <td>${c.phone ? `<span class="field-phone-display">${HrFields.formatPhoneDisplay(c.phone) || c.phone}</span>` : "—"}</td>
+          <td>${wardLabel}</td>
+          <td><span class="tag ${c.status === "active" ? "green" : "gray"}">${D.statusLabel[c.status]}</span></td>
+          <td><button type="button" class="btn small secondary" data-edit-user="${c.id}">${I("pencil")}Изменить</button></td>
+        </tr>`;
+      }).join("")}
+      </tbody></table></div>` : `<div class="empty">Ничего не найдено</div>`}
+      ${paginationHtml(list.length, state.pages.curators, "curators")}`;
+    panel.querySelectorAll("[data-edit-user]").forEach(btn => btn.onclick = () => openUserEdit(btn.dataset.editUser));
+    bindPagination(panel, "curators", renderCuratorsBody);
+  }
+
+  function renderCurators(refreshShell = false) {
+    const panel = $("#panel-curators");
+    if (refreshShell || !panel.querySelector("#curatorsListHost")) {
+      panel.innerHTML = `<div class="card"><h2>Кураторы</h2>
+      <div class="toolbar">
+        <input type="search" id="searchCurators" placeholder="Поиск по ФИО, телефону, подопечным" value="${state.search.curators || ""}">
+        <div id="filterCurStatus"></div>
+        <button type="button" class="btn" id="addCuratorsBtn">${I("user-plus")}Добавить кураторов</button>
+        <button type="button" class="btn secondary" id="exportCurators">${I("download")}Экспорт</button>
+      </div>
+      <div id="curatorsListHost"></div>
+    </div>`;
+      const curStatusOpts = [{ value: "", label: "Все статусы" }, { value: "active", label: "Активен" }, { value: "inactive", label: "Не активен" }];
+      filterCmps.curStatus?.destroy?.();
+      filterCmps.curStatus = UI.createSelect($("#filterCurStatus"), {
+        label: "", options: curStatusOpts, value: state.filters.curators.status,
+        onChange: v => { state.filters.curators.status = v; state.pages.curators = 1; renderCuratorsBody(); }
+      });
+      $("#addCuratorsBtn").onclick = () => openModal("curators");
+      $("#exportCurators").onclick = () => exportUsers("curators");
+    }
+    renderCuratorsBody();
+  }
+
+  function studentAttendanceStats(studentId) {
+    return D.studentAttendanceStats(studentId);
+  }
+
+  function renderStudentAttCard(u) {
+    const st = studentAttendanceStats(u.id);
+    const pct = st.total ? Math.round(st.attended / st.total * 100) : 0;
+    const open = state.attExpanded[u.id];
+    return `<article class="att-card${open ? " open" : ""}" data-att="${u.id}">
+      <div class="att-head" data-att-toggle="${u.id}">
+        <div>
+          <div class="student-cell"><span class="student-avatar">${initials(u)}</span><strong>${D.fullName(u)}</strong></div>
+          <div class="att-stats">
+            <span>Назначено: <b>${st.total}</b></span>
+            <span>Посетил: <b>${st.attended}</b></span>
+            <span>Опозданий: <b>${st.late}</b></span>
+            <span>Пропусков: <b>${st.absent}</b></span>
+            <span>Посещаемость: <b>${pct}%</b></span>
+          </div>
+          <div class="progress-bar" style="margin-top:8px;max-width:280px"><div class="progress-fill" style="width:${pct}%"></div></div>
+        </div>
+        <span class="att-toggle">${st.issues.length ? (open ? "Скрыть" : `Показать (${st.issues.length})`) : "Нет проблем"}</span>
+      </div>
+      ${st.issues.length ? `<div class="att-body">${st.issues.map(({ mark, lesson, group }) => `
+        <div class="issue-item">
+          <strong>${D.markLabel[mark.mark]} · ${lesson?.title || "Занятие"}</strong>
+          <span>${lesson?.date || "—"} · ${lesson?.time || ""} · ${group?.name || "—"} · ${lesson?.place || ""}</span>
+        </div>`).join("")}</div>` : ""}
+    </article>`;
+  }
+
+  function groupAttendanceSummary(students) {
+    let totalPct = 0;
+    let count = 0;
+    students.forEach(u => {
+      const st = studentAttendanceStats(u.id);
+      if (st.total) {
+        totalPct += Math.round(st.attended / st.total * 100);
+        count += 1;
+      }
+    });
+    return count ? Math.round(totalPct / count) : 0;
+  }
+
+  function renderAttendanceBody() {
+    const panel = $("#panel-attendance");
+    const host = panel.querySelector("#attendanceListHost");
+    if (!host) {
+      renderAttendance(true);
+      return;
+    }
+    const f = state.filters.attendance;
+    let students = D.usersByRole("student");
+    if (f.group) students = students.filter(u => D.studentGroups(u.id).some(g => g.id === f.group));
+    const q = (state.search.attendance || "").toLowerCase();
+    students = students.filter(u => !q || D.fullName(u).toLowerCase().includes(q) || D.studentWorkGroup(u.id)?.name.toLowerCase().includes(q));
+
+    const sections = [];
+    if (f.group) {
+      const g = myWorkingGroups().find(x => x.id === f.group);
+      if (g) sections.push({ id: g.id, title: g.name, course: D.courseOfGroup(g.id)?.name, students });
+    } else {
+      myWorkingGroups().forEach(g => {
+        const gStudents = students.filter(u => D.studentGroups(u.id).some(sg => sg.id === g.id));
+        if (gStudents.length) {
+          sections.push({ id: g.id, title: g.name, course: D.courseOfGroup(g.id)?.name, students: gStudents });
+        }
+      });
+      const unassigned = students.filter(u => !D.studentWorkGroup(u.id));
+      if (unassigned.length) sections.push({ id: "__none__", title: "Без группы", course: "", students: unassigned });
+    }
+
+    if (!sections.length) {
+      host.innerHTML = `<div class="empty">Нет данных</div>`;
+      return;
+    }
+
+    host.innerHTML = `<div class="att-group-list">${sections.map(section => {
+      const avg = groupAttendanceSummary(section.students);
+      const open = !!state.attGroupExpanded[section.id];
+      return `<article class="att-group-card${open ? " open" : ""}" data-att-group="${section.id}">
+        <div class="att-group-head" data-att-group-toggle="${section.id}">
+          <div>
+            <strong>${section.title}</strong>
+            ${section.course ? `<div class="att-group-course">${section.course}</div>` : ""}
+          </div>
+          <div class="att-group-meta">
+            <span class="tag blue">${section.students.length} учеников</span>
+            <span class="tag gray">ср. ${avg}%</span>
+            <span class="att-group-chevron">▾</span>
+          </div>
+        </div>
+        <div class="att-group-body"><div class="att-list">${section.students.map(renderStudentAttCard).join("")}</div></div>
+      </article>`;
+    }).join("")}</div>`;
+
+    panel.querySelectorAll("[data-att-group-toggle]").forEach(h => h.onclick = () => {
+      const id = h.dataset.attGroupToggle;
+      state.attGroupExpanded[id] = !state.attGroupExpanded[id];
+      h.closest(".att-group-card")?.classList.toggle("open");
+    });
+    panel.querySelectorAll("[data-att-toggle]").forEach(h => h.onclick = () => {
+      const id = h.dataset.attToggle;
+      const card = h.closest(".att-card");
+      if (!card?.querySelector(".att-body")) return;
+      state.attExpanded[id] = !state.attExpanded[id];
+      card.classList.toggle("open");
+      const st = studentAttendanceStats(id);
+      const toggleEl = h.querySelector(".att-toggle");
+      if (toggleEl) toggleEl.textContent = state.attExpanded[id] ? "Скрыть" : `Показать (${st.issues.length})`;
+    });
+  }
+
+  function renderAttendance(refreshShell = false) {
+    const panel = $("#panel-attendance");
+    if (refreshShell || !panel.querySelector("#attendanceListHost")) {
+      panel.innerHTML = `<div class="card"><h2>Посещаемость по ученикам</h2>
+      <p class="stat-mini" style="margin:0 0 14px">Совокупная статистика по каждому ученику</p>
+      <div class="toolbar">
+        <input type="search" id="searchAttendance" placeholder="Поиск ученика" value="${state.search.attendance || ""}">
+        <div id="filterAttGroup"></div>
+      </div>
+      <div id="attendanceListHost"></div>
+    </div>`;
+      mountToolbarFilters("attendance");
+    }
+    renderAttendanceBody();
+  }
+
+  const NOTIF_TYPE_LABELS = {
+    lesson_reminder_1d: "Напоминание",
+    lesson_reminder_3h: "Скоро занятие",
+    lesson_changed: "Изменение",
+    student_absent: "Пропуск",
+    student_late: "Опоздание",
+    student_strike: "Страйк",
+  };
+
+  function notifCategoryLabel(cat) {
+    return { lesson: "Занятия", attendance: "Посещаемость", strike: "Страйки" }[cat] || cat;
+  }
+
+  function markNotifRead(id) {
+    state.notifRead[id] = true;
+    localStorage.setItem("hrNotifRead", JSON.stringify(state.notifRead));
+  }
+
+  function renderNotifications() {
+    const panel = $("#panel-notifications");
+    const cat = state.filters.notifications.category;
+    let list = D.notifications.map(n => ({ ...n, read: !!state.notifRead[n.id] }));
+    if (cat) list = list.filter(n => n.category === cat);
+    const unread = list.filter(n => !n.read).length;
+    panel.innerHTML = `<div class="card"><h2>Центр уведомлений</h2>
+      <p class="stat-mini" style="margin:0 0 14px">Напоминания о занятиях, пропуски и страйки · непрочитанных: ${unread}</p>
+      <div class="toolbar">
+        <div id="filterNotifCategory"></div>
+        <button type="button" class="btn secondary small" id="markAllNotifRead">Отметить все прочитанными</button>
+      </div>
+      <div class="notif-list">${list.length ? list.map(n => `
+        <article class="notif-item${n.read ? " read" : ""}" data-notif-id="${n.id}">
+          <div class="notif-head">
+            <strong>${NOTIF_TYPE_LABELS[n.type] || n.type}</strong>
+            <span class="entity-pill">${notifCategoryLabel(n.category)}</span>
+            ${!n.read ? '<span class="entity-pill blue">новое</span>' : ""}
+          </div>
+          <span>${n.text}</span>
+          <span class="stat-mini">${n.created_at ? new Date(n.created_at).toLocaleString("ru-RU") : ""}</span>
+        </article>`).join("") : `<div class="empty">Нет уведомлений по выбранному фильтру.</div>`}
+      </div></div>`;
+    const catOpts = [
+      { value: "", label: "Все типы" },
+      { value: "lesson", label: "Занятия" },
+      { value: "attendance", label: "Посещаемость" },
+      { value: "strike", label: "Страйки" },
+    ];
+    filterCmps.notifCat?.destroy?.();
+    filterCmps.notifCat = UI.createSelect($("#filterNotifCategory"), {
+      label: "", options: catOpts, value: cat,
+      onChange: v => { state.filters.notifications.category = v; renderNotifications(); }
+    });
+    panel.querySelectorAll("[data-notif-id]").forEach(el => {
+      el.onclick = () => { markNotifRead(el.dataset.notifId); renderNotifications(); };
+    });
+    $("#markAllNotifRead").onclick = () => {
+      list.forEach(n => { state.notifRead[n.id] = true; });
+      localStorage.setItem("hrNotifRead", JSON.stringify(state.notifRead));
+      renderNotifications();
+    };
+  }
+
+  function applyHrScheduleRange() {
+    hrRangeFrom = startOfDay(UI.parseDateStr(hrScheduleCmps.from.getValue()));
+    hrRangeTo = startOfDay(UI.parseDateStr(hrScheduleCmps.to.getValue()));
+    if (hrRangeTo < hrRangeFrom) {
+      showToast("Дата «По» не может быть раньше «С»", "warning");
+      return;
+    }
+    renderHrCalendar();
+  }
+
+  function renderHrCalendar() {
+    const TS = TeacherSchedule;
+    const wrap = $("#hrCalWrap");
+    if (!wrap) return;
+    const days = daysBetween(hrRangeFrom, hrRangeTo);
+    if (!days.length) {
+      wrap.innerHTML = `<div class="empty">Выберите корректный период</div>`;
+      return;
+    }
+    let lessons = (D.lessons || []).map(normalizeHrLesson);
+    const gf = state.filters.lessons.group;
+    if (gf) lessons = lessons.filter(l => l.id_group === gf);
+    const todayStr = dateStr(new Date());
+    const rangeLessons = lessons.filter(l => {
+      const d = UI.parseDateStr(TS.lessonDateStr(l));
+      return d >= startOfDay(hrRangeFrom) && d <= startOfDay(hrRangeTo);
+    });
+    const totalH = TS.totalHeightPx(TS.CAL_DAY_START, TS.CAL_DAY_END, TS.PX_PER_MIN);
+    const hours = TS.hourMarkers(TS.CAL_DAY_START, TS.CAL_DAY_END);
+    const daysHead = days.map(d => {
+      const ds = dateStr(d);
+      return `<div class="cal-day-head ${ds === todayStr ? "today" : ""}">
+        ${d.toLocaleDateString("ru-RU", { weekday: "short" })}<br>${d.getDate()}
+      </div>`;
+    }).join("");
+    const timesCol = hours.map(h => `<div class="cal-hour-label" style="top:${h.top}px">${h.label}</div>`).join("");
+    const daysCol = days.map(d => {
+      const ds = dateStr(d);
+      const dayLessons = rangeLessons.filter(l => TS.lessonDateStr(l) === ds);
+      const blocks = TS.layoutDayLessons(dayLessons, TS.CAL_DAY_START, TS.PX_PER_MIN);
+      const hourLines = hours.map(h => `<div class="cal-hour-line" style="top:${h.top}px"></div>`).join("");
+      const blocksHtml = blocks.map(b => {
+        const l = b.lesson;
+        return `<div class="cal-lesson-block mine hr-readonly"` +
+          ` style="top:${b.top}px;height:${b.height}px;left:calc(${b.leftPct}% + 2px);width:calc(${b.widthPct}% - 4px)"` +
+          ` title="${escapeHtml([l.title, l.group_name, l.teacher_name, l.place].filter(Boolean).join(" · "))}">` +
+          `<strong>${escapeHtml(l.title)}</strong>` +
+          `<span class="cal-block-meta">${l.time}${l.timeEnd ? "–" + l.timeEnd : ""}</span>` +
+          `<span class="cal-block-meta">${escapeHtml(l.group_name || "—")}</span>` +
+          `<span class="cal-block-meta">${escapeHtml(l.teacher_name || "—")}</span>` +
+          (l.place ? `<span class="cal-block-meta">${escapeHtml(l.place)}</span>` : "") +
+          "</div>";
+      }).join("");
+      return `<div class="cal-day-col" style="height:${totalH}px">${hourLines}${blocksHtml}</div>`;
+    }).join("");
+    const emptyMsg = !rangeLessons.length ? "В выбранном периоде нет занятий" : "";
+    wrap.innerHTML = `
+      <div class="cal-header"><div class="cal-gutter"></div><div class="cal-days-head">${daysHead}</div></div>
+      <div class="cal-body cal-body-grid">
+        <div class="cal-times-fixed" style="height:${totalH}px">${timesCol}</div>
+        <div class="cal-days-scroll">
+          <div class="cal-days">${daysCol}</div>
+          ${emptyMsg ? `<div class="cal-empty-overlay">${emptyMsg}</div>` : ""}
+        </div>
+      </div>`;
+  }
+
+  function renderLessons(refreshShell = false) {
+    const panel = $("#panel-lessons");
+    if (refreshShell || !panel.querySelector("#hrCalWrap")) {
+      panel.innerHTML = `<div class="card"><h2>Расписание занятий</h2>
+      <p class="stat-mini" style="margin:0 0 14px">Календарь занятий в ваших группах · только просмотр</p>
+      <div class="toolbar schedule-toolbar">
+        <div class="toolbar-item" id="hrRangeFromWrap"></div>
+        <div class="toolbar-item" id="hrRangeToWrap"></div>
+        <div id="filterLessonGroup"></div>
+      </div>
+      <div class="cal-wrap" id="hrCalWrap"></div>
+      <p class="hint" style="margin-top:12px">Временная сетка 08:00–20:00. Как в панели преподавателя.</p>
+    </div>`;
+      hrScheduleCmps.from = UI.createDatePicker($("#hrRangeFromWrap"), {
+        label: "С",
+        value: dateStr(hrRangeFrom),
+        onChange: applyHrScheduleRange,
+      });
+      hrScheduleCmps.to = UI.createDatePicker($("#hrRangeToWrap"), {
+        label: "По",
+        value: dateStr(hrRangeTo),
+        onChange: applyHrScheduleRange,
+      });
+      const groupOpts = [{ value: "", label: "Все группы" }, ...myWorkingGroups().map(g => ({ value: g.id, label: g.name }))];
+      filterCmps.lessonGroup?.destroy?.();
+      filterCmps.lessonGroup = UI.createSelect($("#filterLessonGroup"), {
+        label: "", options: groupOpts, value: state.filters.lessons.group,
+        onChange: v => { state.filters.lessons.group = v; renderHrCalendar(); }
+      });
+    }
+    renderHrCalendar();
+  }
+
+  function strikeName(s) {
+    return [s.last_name, s.first_name].filter(Boolean).join(" ") || D.fullName(D.userById(s.user_id));
+  }
+
+  function renderStrikesBody() {
+    const panel = $("#panel-strikes");
+    const host = panel.querySelector("#strikesListHost");
+    if (!host) {
+      renderStrikes(true);
+      return;
+    }
+    const f = state.filters.strikes;
+    let strikes = D.strikes || [];
+    if (f.status) strikes = strikes.filter(s => s.status === f.status);
+    const q = (state.search.strikes || "").toLowerCase();
+    strikes = strikes.filter(s => !q || [strikeName(s), s.group_name, s.reason].join(" ").toLowerCase().includes(q));
+    const appeals = D.appeals || [];
+    const pages = Math.max(1, Math.ceil(strikes.length / PAGE_SIZE));
+    if (state.pages.strikes > pages) state.pages.strikes = pages;
+    const slice = strikes.slice((state.pages.strikes - 1) * PAGE_SIZE, state.pages.strikes * PAGE_SIZE);
+    const subtitle = panel.querySelector("#strikesAppealsSubtitle");
+    if (subtitle) subtitle.textContent = `Открытых апелляций: ${appeals.length}`;
+    host.innerHTML = `${appeals.length ? `<div class="appeals-block"><h3>Открытые апелляции</h3>
+        <div class="table-wrap"><table><thead><tr>
+          <th>Ученик</th><th>Группа</th><th>№</th><th>Причина страйка</th><th>Апелляция</th><th>Дата</th><th></th>
+        </tr></thead><tbody>${appeals.map(a => `<tr>
+          <td>${strikeName(a)}</td>
+          <td>${a.group_name || "—"}</td>
+          <td><span class="tag yellow">${a.strike_number}/3</span></td>
+          <td>${a.reason || "—"}</td>
+          <td>${a.appeal_reason || "—"}</td>
+          <td>${a.appealed_at ? new Date(a.appealed_at).toLocaleDateString("ru-RU") : "—"}</td>
+          <td class="actions">
+            <button type="button" class="btn small" data-appeal-approve="${a.id}">${I("check")}Одобрить</button>
+            <button type="button" class="btn small danger" data-appeal-reject="${a.id}">${I("x")}Отклонить</button>
+          </td>
+        </tr>`).join("")}</tbody></table></div></div>` : ""}
+      <h3 style="margin-top:20px">Все страйки</h3>
+      ${slice.length ? `<div class="table-wrap"><table><thead><tr>
+        <th>Ученик</th><th>Группа</th><th>№</th><th>Статус</th><th>Причина</th><th>Дата</th>
+      </tr></thead><tbody>${slice.map(s => {
+        const sc = s.status === "active" ? "red" : s.status === "appealed" ? "yellow" : "gray";
+        return `<tr>
+          <td>${strikeName(s)}</td>
+          <td>${s.group_name || "—"}</td>
+          <td>${s.strike_number}/3</td>
+          <td><span class="tag ${sc}">${STRIKE_STATUS_LABELS[s.status] || s.status}</span></td>
+          <td>${s.reason || "—"}</td>
+          <td>${s.created_at ? new Date(s.created_at).toLocaleDateString("ru-RU") : "—"}</td>
+        </tr>`;
+      }).join("")}</tbody></table></div>` : `<div class="empty">Нет страйков</div>`}
+      ${paginationHtml(strikes.length, state.pages.strikes, "strikes")}`;
+    panel.querySelectorAll("[data-appeal-approve]").forEach(btn => btn.onclick = () => resolveAppeal(btn.dataset.appealApprove, true));
+    panel.querySelectorAll("[data-appeal-reject]").forEach(btn => btn.onclick = () => resolveAppeal(btn.dataset.appealReject, false));
+    bindPagination(panel, "strikes", renderStrikesBody);
+  }
+
+  function renderStrikes(refreshShell = false) {
+    const panel = $("#panel-strikes");
+    if (refreshShell || !panel.querySelector("#strikesListHost")) {
+      panel.innerHTML = `<div class="card"><h2>Страйки и апелляции</h2>
+      <p class="stat-mini" id="strikesAppealsSubtitle" style="margin:0 0 14px">Открытых апелляций: 0</p>
+      <div class="toolbar">
+        <input type="search" id="searchStrikes" placeholder="Поиск" value="${state.search.strikes || ""}">
+        <div id="filterStrikeStatus"></div>
+      </div>
+      <div id="strikesListHost"></div>
+    </div>`;
+      const stOpts = [
+        { value: "", label: "Все статусы" },
+        { value: "active", label: "Активные" },
+        { value: "appealed", label: "Апелляции" },
+        { value: "revoked", label: "Отменённые" },
+      ];
+      filterCmps.strikeStatus?.destroy?.();
+      filterCmps.strikeStatus = UI.createSelect($("#filterStrikeStatus"), {
+        label: "", options: stOpts, value: state.filters.strikes.status,
+        onChange: v => { state.filters.strikes.status = v; state.pages.strikes = 1; renderStrikesBody(); }
+      });
+    }
+    renderStrikesBody();
+  }
+
+  async function resolveAppeal(strikeId, approved) {
+    try {
+      await HrApi.resolveAppeal(strikeId, approved);
+      await reloadData();
+      showToast(approved ? "Апелляция одобрена, страйк снят" : "Апелляция отклонена", approved ? "success" : "info");
+      renderStrikes();
+      renderStudents();
+    } catch (err) {
+      showToast(err.message || "Ошибка рассмотрения", "error");
+    }
+  }
+
+  function reportCtx() {
+    return {
+      D: D,
+      api: MaxRassApi,
+      HrFields: HrFields,
+      hr: hr,
+      hrName: hr ? D.fullName(hr) : "HR",
+    };
+  }
+
+  async function loadSelectedReport() {
+    const reportId = state.reports.selectedId;
+    if (!reportId || state.reports.loading) return;
+    state.reports.loading = true;
+    state.reports.error = null;
+    renderReportsShell();
+    try {
+      state.reports.result = await HrReports.load(reportId, reportCtx());
+    } catch (err) {
+      state.reports.result = null;
+      state.reports.error = err.message || "Ошибка загрузки отчёта";
+    }
+    state.reports.loading = false;
+    renderReportsShell();
+  }
+
+  function reportExpanded(reportId) {
+    const id = reportId || state.reports.selectedId;
+    if (!state.reports.expandedByReport[id]) {
+      state.reports.expandedByReport[id] = {};
+    }
+    return state.reports.expandedByReport[id];
+  }
+
+  function selectReport(id) {
+    if (state.reports.selectedId === id && state.reports.result?.meta.id === id) return;
+    state.reports.selectedId = id;
+    loadSelectedReport();
+  }
+
+  function ensureReportLoaded() {
+    if (state.reports.loading) return;
+    if (state.reports.result?.meta.id === state.reports.selectedId) return;
+    loadSelectedReport();
+  }
+
+  function renderReportsShell() {
+    const panel = $("#panel-reports");
+    const selected = HrReports.catalog.find(r => r.id === state.reports.selectedId) || HrReports.catalog[0];
+    const result = state.reports.result;
+    const ready = result && result.meta.id === selected.id && !state.reports.loading;
+
+    const typeCards = HrReports.catalog.map(r => `
+      <button type="button" class="report-type-card${r.id === selected.id ? " active" : ""}" data-report-type="${r.id}">
+        <span class="report-type-title">${r.title}</span>
+        <span class="report-type-desc">${r.purpose}</span>
+      </button>`).join("");
+
+    const expanded = reportExpanded(selected.id);
+    const isTree = ready && result.view === "tree";
+
+    const preview = state.reports.loading
+      ? '<div class="report-loading"><span class="report-spinner"></span>Формируем отчёт…</div>'
+      : state.reports.error
+        ? `<div class="empty report-error">${state.reports.error}</div>`
+        : ready
+          ? `<div class="report-preview-body" id="reportPreviewBody">${HrReports.renderPreview(result, expanded)}</div>`
+          : '<div class="report-loading"><span class="report-spinner"></span>Формируем отчёт…</div>';
+
+    const summary = D.summaryReport || {};
+    const summaryCards = [
+      { label: "Учеников", value: summary.users_total ?? "—" },
+      { label: "Активных групп", value: summary.groups_active ?? "—" },
+      { label: "Активных страйков", value: summary.strikes_active ?? "—" },
+      { label: "Апелляций", value: summary.appeals_pending ?? "—" },
+      { label: "Занятий за 7 дней", value: summary.lessons_week ?? "—" },
+    ];
+    const summaryHtml = `<div class="summary-report-widget">
+      <div class="summary-report-head">
+        <strong>Сводка HR</strong>
+        <span class="stat-mini">GET /hr/reports/summary — агрегированные счётчики по вашему scope</span>
+      </div>
+      <div class="summary-report-grid">${summaryCards.map(c => `
+        <div class="summary-report-card">
+          <span class="summary-report-value">${c.value}</span>
+          <span class="summary-report-label">${c.label}</span>
+        </div>`).join("")}
+      </div>
+    </div>`;
+
+    panel.innerHTML = `<div class="card report-card">
+      <div class="report-head">
+        <div>
+          <h2>Отчёты</h2>
+          <p class="report-intro">Выберите тип отчёта — данные загрузятся автоматически.</p>
+        </div>
+        <button type="button" class="btn secondary" id="reportExportBtn" data-icon="download" ${ready ? "" : "disabled"}>${I("download")}Excel</button>
+      </div>
+      ${summaryHtml}
+      <div class="report-type-grid">${typeCards}</div>
+      <div class="report-meta">
+        <strong>${selected.title}</strong>
+        <span>${selected.purpose}</span>
+        <span class="report-meta-spacer"></span>
+        ${isTree ? '<button type="button" class="btn secondary small" id="reportCollapseAllBtn">Закрыть все</button>' : ""}
+        ${ready ? `<span class="report-count">${result.rows.length} записей</span>` : ""}
+      </div>
+      ${preview}
+    </div>`;
+
+    panel.querySelectorAll("[data-report-type]").forEach(btn => {
+      btn.onclick = () => selectReport(btn.dataset.reportType);
+    });
+
+    if (ready && result.view === "tree") {
+      HrReports.bindTreeState($("#reportPreviewBody"), expanded);
+      const collapseBtn = $("#reportCollapseAllBtn");
+      if (collapseBtn) {
+        collapseBtn.onclick = () => {
+          HrReports.collapseAll($("#reportPreviewBody"), expanded);
+        };
+      }
+    }
+
+    $("#reportExportBtn").onclick = () => {
+      if (!ready) return;
+      try {
+        HrReports.export(result, reportCtx());
+        showToast("Отчёт «" + selected.title + "» выгружен", "success");
+      } catch (err) {
+        showToast(err.message || "Ошибка выгрузки", "error");
+      }
+    };
+  }
+
+  function renderReports() {
+    renderReportsShell();
+    ensureReportLoaded();
+  }
+
+  function emptyModalRow(key) {
+    const cfg = MODAL_CONFIG[key];
+    const row = { _key: Date.now() + Math.random() };
+    cfg.fields.forEach(f => {
+      if (f === "status") row[f] = "активен";
+      else if (f === "direction") row[f] = myCourses()[0]?.name || "";
+      else row[f] = "";
+    });
+    return row;
+  }
+
+  function clearEditCmps() {
+    Object.values(state.editCmps).forEach(c => c?.destroy?.());
+    state.editCmps = {};
+  }
+
+  function closeEdit() {
+    $("#editOverlay").classList.remove("open");
+    clearEditCmps();
+    state.edit = null;
+  }
+
+  function syncUserEditSections(roleUi) {
+    const curatorWrap = $("#edCuratorWrap");
+    const teacherMeta = $("#edTeacherMeta");
+    const curatorMeta = $("#edCuratorMeta");
+    if (curatorWrap) curatorWrap.style.display = roleUi === "student" ? "" : "none";
+    if (teacherMeta) teacherMeta.style.display = roleUi === "teacher" ? "" : "none";
+    if (curatorMeta) curatorMeta.style.display = roleUi === "curator" ? "" : "none";
+  }
+
+  function openUserEdit(id) {
+    const u = D.userById(id);
+    if (!u) return;
+    const banPreview = u.status === "inactive" && u.ban_reason ? u.ban_reason : "—";
+    state.edit = {
+      type: u.id_role,
+      id,
+      originalStatus: u.status,
+      originalBanReason: u.ban_reason || null,
+      pendingBanReason: null,
+    };
+    $("#editTitle").textContent = "Редактировать пользователя";
+    $("#editSubtitle").textContent = D.fullName(u);
+    const phoneDisplay = u.phone ? (HrFields.formatPhoneDisplay(HrFields.normalizePhone(u.phone) || u.phone) || u.phone) : "";
+    const dirs = teacherDirections(u);
+    const wgs = teacherWorkGroups(u);
+    const wards = curatorWardNames(u.id);
+    $("#editBody").innerHTML = `<div class="edit-form">
+      <div class="edit-row">
+        <div><label class="ui-label">Фамилия *</label><input class="cell-input" id="edLast" style="width:100%;max-width:none" value="${u.lastName}"></div>
+        <div><label class="ui-label">Имя *</label><input class="cell-input" id="edFirst" style="width:100%;max-width:none" value="${u.firstName}"></div>
+      </div>
+      <div class="edit-row">
+        <div><label class="ui-label">Отчество</label><input class="cell-input" id="edMiddle" style="width:100%;max-width:none" value="${u.middleName || ""}"></div>
+        <div><label class="ui-label">ID MAX</label><input class="cell-input" id="edMax" style="width:100%;max-width:none" value="${u.id_max || ""}"></div>
+      </div>
+      <div class="edit-row">
+        <div><label class="ui-label">Телефон</label><input class="cell-input" id="edPhone" style="width:100%;max-width:none" value="${phoneDisplay}"></div>
+        <div><label class="ui-label">Статус</label><div id="edStatus"></div></div>
+      </div>
+      <div class="edit-row" id="edBanWrap" style="display:${u.status === "inactive" ? "" : "none"}">
+        <div class="ban-reason-edit-block">
+          <label class="ui-label">Комментарий блокировки</label>
+          <p id="edBanReasonPreview" class="ban-reason-preview">${banPreview}</p>
+          <button type="button" class="btn secondary small" id="edBanReasonEditBtn">${I("pencil")}Изменить комментарий</button>
+        </div>
+      </div>
+      <div class="edit-row">
+        <div><label class="ui-label">Роль</label><div id="edRole"></div></div>
+      </div>
+      <div id="edCuratorWrap"><label class="ui-label">Куратор</label><div id="edCurator"></div></div>
+      <div id="edTeacherMeta" class="edit-meta">
+        <p class="stat-mini">Назначение на занятия — через <code>lessons.teacher_id</code>. Ниже — группы по вашим занятиям.</p>
+        <div><label class="ui-label">Направления</label><p>${dirs.join(", ") || "—"}</p></div>
+        <div><label class="ui-label">Рабочие группы</label><p>${wgs.join(", ") || "—"}</p></div>
+      </div>
+      <div id="edCuratorMeta" class="edit-meta">
+        <div><label class="ui-label">Подопечные ученики</label><p>${wards.length ? wards.join(", ") : "—"}</p></div>
+      </div>
+    </div>`;
+    state.editCmps.status = UI.createSelect($("#edStatus"), {
+      options: statusOpts(), value: u.status,
+      onChange: v => {
+        if (v === "inactive") {
+          if (state.edit.originalStatus !== "inactive" && !state.edit.pendingBanReason) {
+            openBanReasonModal(u.id, state.edit.originalStatus, state.editCmps.status, { mode: "defer" });
+          } else {
+            updateEdBanReasonPreview(state.edit.pendingBanReason || state.edit.originalBanReason || "ручной бан");
+          }
+        } else {
+          $("#edBanWrap").style.display = "none";
+          state.edit.pendingBanReason = null;
+        }
+      }
+    });
+    $("#edBanReasonEditBtn").onclick = () => {
+      openBanReasonModal(u.id, "inactive", state.editCmps.status, {
+        mode: "defer",
+        revertOnCancel: false,
+        title: "Комментарий блокировки",
+      });
+    };
+    state.editCmps.role = UI.createSelect($("#edRole"), {
+      options: manageableRoleOpts(),
+      value: u.id_role,
+      onChange: (v) => { state.edit.type = v; syncUserEditSections(v); },
+    });
+    state.editCmps.maxId = HrFields.attachMaxIdInput($("#edMax"));
+    state.editCmps.phone = HrFields.attachPhoneInput($("#edPhone"));
+    state.editCmps.curator = mountCuratorCombo($("#edCurator"), u.id_curator || "");
+    syncUserEditSections(u.id_role);
+    $("#editOverlay").classList.add("open");
+  }
+
+  function clearGroupEditCmps() {
+    Object.values(groupEditCmps).forEach(c => c?.destroy?.());
+    Object.keys(groupEditCmps).forEach(k => delete groupEditCmps[k]);
+  }
+
+  function closeGroupEditor() {
+    $("#groupOverlay").classList.remove("open");
+    clearGroupEditCmps();
+    state.groupEdit = null;
+    $("#geImportFile").value = "";
+  }
+
+  function renderGroupEditorLists() {
+    if (!state.groupEdit) return;
+    const q = (state.groupEdit.searchAvail || "").toLowerCase();
+    const avail = D.usersByRole("student").filter(s => {
+      if (state.groupEdit.studentIds.includes(s.id)) return false;
+      return !q || D.fullName(s).toLowerCase().includes(q);
+    });
+    $("#geAvailList").innerHTML = avail.length ? avail.map(s => `
+      <div class="ge-person">
+        <div class="ge-person-info"><span class="student-avatar">${initials(s)}</span><span>${D.fullName(s)}</span></div>
+        <button type="button" class="btn small icon-only" data-ge-add="${s.id}" aria-label="Добавить">${I("plus")}</button>
+      </div>`).join("") : `<div class="nested-empty">Никого не найдено</div>`;
+    $("#geMemberList").innerHTML = state.groupEdit.studentIds.length ? state.groupEdit.studentIds.map(sid => {
+      const s = D.userById(sid);
+      return s ? `<div class="ge-person">
+        <div class="ge-person-info"><span class="student-avatar">${initials(s)}</span><span>${D.fullName(s)}</span></div>
+        <button type="button" class="btn small danger icon-only" data-ge-rm="${sid}" aria-label="Убрать">${I("minus")}</button>
+      </div>` : "";
+    }).join("") : `<div class="nested-empty">Нет участников</div>`;
+    $("#geAvailList").querySelectorAll("[data-ge-add]").forEach(btn => btn.onclick = () => {
+      state.groupEdit.studentIds.push(btn.dataset.geAdd);
+      renderGroupEditorLists();
+    });
+    $("#geMemberList").querySelectorAll("[data-ge-rm]").forEach(btn => btn.onclick = () => {
+      state.groupEdit.studentIds = state.groupEdit.studentIds.filter(x => x !== btn.dataset.geRm);
+      renderGroupEditorLists();
+    });
+  }
+
+  function openGroupEditor(id, presetCourseId) {
+    clearGroupEditCmps();
+    const g = id ? D.groups.find(x => x.id === id) : null;
+    const course = g ? D.courseOfGroup(g.id) : null;
+    const students = g ? D.groupStudents(g.id) : [];
+    state.groupEdit = {
+      id: g?.id || null,
+      studentIds: students.map(s => s.id),
+      searchAvail: "",
+      importRows: [],
+      pendingDirection: null
+    };
+    $("#groupEditTitle").textContent = g ? "Редактировать группу" : "Новая группа";
+    $("#groupEditSubtitle").textContent = g ? course?.name || "" : "Состав и настройки";
+    $("#geName").value = g?.name || "";
+    const dirOpts = myCourses().map(c => ({ value: String(c.id), label: c.name }));
+    groupEditCmps.dir = UI.createSelect($("#geDirection"), {
+      options: dirOpts.length ? dirOpts : [{ value: "", label: "Создайте направление" }],
+      value: String(course?.id || presetCourseId || dirOpts[0]?.value || "")
+    });
+    groupEditCmps.status = UI.createSelect($("#geStatus"), {
+      options: groupStatusOpts(), value: g?.status || "forming"
+    });
+    groupEditCmps.hr = UI.createSearchSelect($("#geHr"), {
+      options: hrOpts(), value: String(g?.id_hr || hr.id), placeholder: "Поиск HR…"
+    });
+    const searchEl = $("#geSearchAvail");
+    searchEl.value = "";
+    searchEl.oninput = (e) => { state.groupEdit.searchAvail = e.target.value; renderGroupEditorLists(); };
+    renderGroupEditorLists();
+    $("#geAssignTeacherBtn").onclick = () => {
+      if (!state.groupEdit.id) return showToast("Сначала сохраните группу", "warning");
+      openAssignTeacherModal({ groupId: state.groupEdit.id });
+    };
+    $("#geAssignTeacherBtn").style.display = g ? "" : "none";
+    $("#groupOverlay").classList.add("open");
+  }
+
+  function downloadGroupTemplate() {
+    const rows = [
+      ["ФИО", "ID MAX", "Телефон", "Статус", "Направление", "Группа"],
+      ["Иван Иванов", "123456789", "+79001234567", "активен", myCourses()[0]?.name || "Backend", "Backend-25"]
+    ];
+    downloadWorkbook(rows, "template_group.xlsx");
+    showToast("Шаблон скачан", "info");
+  }
+
+  function importGroupExcel(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
+      if (aoa.length < 2) return showToast("Файл пуст", "warning");
+      const headers = aoa[0].map(h => String(h).toLowerCase().trim());
+      const map = {
+        "фио": "fio", "id max": "id_max", "телефон": "phone", "статус": "status",
+        "направление": "direction", "группа": "group", "название группы": "group"
+      };
+      const keys = headers.map(h => map[h] || h);
+      const rows = aoa.slice(1).map(vals => {
+        const row = {};
+        keys.forEach((k, i) => { if (k) row[k] = String(vals[i] || "").trim(); });
+        return row;
+      }).filter(r => r.fio || r.group);
+      state.groupEdit.importRows = rows;
+      const first = rows[0];
+      if (first?.group) $("#geName").value = first.group;
+      if (first?.direction) {
+        const c = myCourses().find(x => x.name === first.direction);
+        if (c) groupEditCmps.dir.setValue(String(c.id));
+        else state.groupEdit.pendingDirection = first.direction;
+      }
+      rows.forEach(row => {
+        const s = findStudentByFio(row.fio);
+        if (s && !state.groupEdit.studentIds.includes(s.id)) state.groupEdit.studentIds.push(s.id);
+      });
+      renderGroupEditorLists();
+      showToast("Импортировано " + rows.length + " строк · новые данные появятся после сохранения", "info");
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function saveGroupEditor() {
+    if (!state.groupEdit) return;
+    const name = $("#geName").value.trim();
+    let courseId = groupEditCmps.dir.getValue();
+    const status = groupEditCmps.status.getValue();
+    if (state.groupEdit.pendingDirection) {
+      try {
+        const created = await HrApi.createGroup({ name: state.groupEdit.pendingDirection, id_parent: null, status: "active" });
+        courseId = created.id;
+      } catch (err) {
+        return showToast(err.message || "Ошибка направления", "error");
+      }
+    }
+    if (!name || !courseId) return showToast("Укажите название и направление", "warning");
+
+    try {
+      let groupId = state.groupEdit.id;
+      const idHr = groupEditCmps.hr.getValue() || hr.id;
+      if (groupId) {
+        await HrApi.updateGroup(groupId, { name, status, id_hr: idHr, id_parent: courseId });
+      } else {
+        const created = await HrApi.createGroup({ name, id_parent: courseId, status, id_hr: idHr });
+        groupId = created.id;
+      }
+
+      if (state.groupEdit.importRows.length) {
+        await HrApi.createUsersBulk(state.groupEdit.importRows, "student");
+        await reloadData();
+        state.groupEdit.importRows.forEach(row => {
+          const s = findStudentByFio(row.fio);
+          if (s && !state.groupEdit.studentIds.includes(s.id)) state.groupEdit.studentIds.push(s.id);
+        });
+      }
+
+      await HrApi.syncGroupMembers(groupId, state.groupEdit.studentIds);
+      await reloadData();
+      state.selectedGroupId = groupId;
+      showToast(`Группа «${name}» сохранена`, "success");
+      closeGroupEditor();
+      renderGroups();
+      renderStudents();
+    } catch (err) {
+      showToast(err.message || "Ошибка сохранения группы", "error");
+    }
+  }
+
+  function refreshUserLists() {
+    renderStudents(true);
+    renderTeachers(true);
+    renderCurators(true);
+  }
+
+  async function saveEdit() {
+    if (!state.edit) return;
+    try {
+      const maxVal = state.editCmps.maxId?.getNormalized?.();
+      const phoneVal = state.editCmps.phone?.getNormalized?.();
+      const roleUi = state.editCmps.role?.getValue?.() || state.edit.type;
+      let curatorVal = "";
+      if (roleUi === "student") {
+        curatorVal = state.editCmps.curator?.getValue?.() || "";
+        if (curatorVal && !HrFields.isUuid(curatorVal)) return showToast("Выберите куратора из списка или укажите UUID", "warning");
+      }
+      if (maxVal === null) return showToast("Проверьте формат ID MAX", "warning");
+      if (phoneVal === null) return showToast("Проверьте формат телефона", "warning");
+      const lastName = $("#edLast").value.trim();
+      const firstName = $("#edFirst").value.trim();
+      if (!lastName || !firstName) return showToast("Укажите фамилию и имя", "warning");
+      const statusVal = state.editCmps.status.getValue();
+      let banReason = null;
+      if (statusVal === "inactive") {
+        banReason = state.edit.pendingBanReason
+          ?? (state.edit.originalStatus === "inactive" ? state.edit.originalBanReason : null);
+        if (!banReason && state.edit.originalStatus !== "inactive") {
+          openBanReasonModal(state.edit.id, state.edit.originalStatus, state.editCmps.status, { mode: "defer" });
+          return showToast("Укажите комментарий блокировки", "warning");
+        }
+        banReason = banReason || "ручной бан";
+      }
+      await HrApi.updateUser(state.edit.id, {
+        firstName,
+        lastName,
+        middleName: $("#edMiddle").value.trim(),
+        id_max: maxVal || null,
+        phone: phoneVal || null,
+        id_curator: roleUi === "student" ? (curatorVal || null) : null,
+        status: statusVal,
+        ban_reason: banReason,
+        roleCode: roleUi,
+      });
+      await reloadData();
+      showToast(`Сохранено · ${D.fullName(D.userById(state.edit.id))}`, "success");
+      closeEdit();
+      refreshUserLists();
+    } catch (err) {
+      showToast(err.message || "Ошибка сохранения", "error");
+    }
+  }
+
+  function destroyBulkGroupCmps() {
+    Object.values(bulkGroupCmps).forEach(c => c?.destroy?.());
+    Object.keys(bulkGroupCmps).forEach(k => delete bulkGroupCmps[k]);
+  }
+
+  function syncBulkGroupPanels() {
+    const mode = state.bulkGroup.mode;
+    const existing = $("#bulkGroupExistingWrap");
+    const neu = $("#bulkGroupNewWrap");
+    if (existing) existing.style.display = mode === "existing" ? "" : "none";
+    if (neu) neu.style.display = mode === "new" ? "" : "none";
+  }
+
+  function mountBulkGroupPanel() {
+    destroyBulkGroupCmps();
+    const panel = $("#bulkGroupPanel");
+    if (!panel) return;
+    const isStudents = state.modalKey === "students";
+    panel.style.display = isStudents ? "" : "none";
+    if (!isStudents) return;
+    const modeOpts = [
+      { value: "none", label: "Без группы" },
+      { value: "existing", label: "Существующая группа" },
+      { value: "new", label: "Создать новую группу" },
+    ];
+    const groupOpts = myWorkingGroups().map(g => ({ value: g.id, label: g.name }));
+    const dirOpts = myCourses().map(c => ({ value: c.id, label: c.name }));
+    bulkGroupCmps.mode = UI.createSelect($("#bulkGroupMode"), {
+      options: modeOpts, value: state.bulkGroup.mode,
+      onChange: v => { state.bulkGroup.mode = v; syncBulkGroupPanels(); }
+    });
+    bulkGroupCmps.group = UI.createSelect($("#bulkGroupSelect"), {
+      options: groupOpts.length ? groupOpts : [{ value: "", label: "Нет групп" }],
+      value: state.bulkGroup.groupId || groupOpts[0]?.value || ""
+    });
+    bulkGroupCmps.dir = UI.createSelect($("#bulkGroupDirection"), {
+      options: dirOpts.length ? dirOpts : [{ value: "", label: "Создайте направление" }],
+      value: state.bulkGroup.directionId || dirOpts[0]?.value || ""
+    });
+    $("#bulkGroupNewName").value = state.bulkGroup.newName || "";
+    syncBulkGroupPanels();
+  }
+
+  function openModal(key) {
+    state.modalKey = key;
+    state.modalRows = [emptyModalRow(key)];
+    state.bulkGroup = { mode: "none", groupId: "", directionId: myCourses()[0]?.id || "", newName: "" };
+    $("#modalTitle").textContent = MODAL_CONFIG[key].title;
+    $("#modalSubtitle").textContent = "Импорт из Excel или ручной ввод";
+    renderPreviewTable();
+    mountBulkGroupPanel();
+    $("#modalOverlay").classList.add("open");
+  }
+
+  function closeModal() {
+    $("#modalOverlay").classList.remove("open");
+    destroyModalFieldCmps();
+    destroyBulkGroupCmps();
+    state.modalKey = null;
+    state.modalRows = [];
+    $("#importFile").value = "";
+  }
+
+  function renderPreviewTable() {
+    destroyModalFieldCmps();
+    const cfg = MODAL_CONFIG[state.modalKey];
+    const head = cfg.fields.map(f => {
+      const meta = USER_FIELD_META[f];
+      const cls = meta?.required ? ' class="col-required"' : "";
+      return `<th${cls}>${fieldLabel(f)}</th>`;
+    }).join("") + "<th></th>";
+    const body = state.modalRows.map((row, ri) => `<tr>${cfg.fields.map(f => {
+      if (f === "status" || f === "direction") return `<td><div data-sel="${ri}-${f}"></div></td>`;
+      if (f === "id_curator") return `<td><div class="modal-curator-cell" data-cur-combo="${ri}"></div></td>`;
+      if (f === "id_max" || f === "phone") return `<td><input type="text" class="cell-input ${f === "id_max" ? "field-max-id" : "field-phone"}" data-row="${ri}" data-field="${f}"></td>`;
+      const req = USER_FIELD_META[f]?.required ? ' data-required="1"' : "";
+      return `<td><input type="text" class="cell-input" data-row="${ri}" data-field="${f}"${req}></td>`;
+    }).join("")}<td><button type="button" class="btn danger small icon-only" data-remove="${ri}" aria-label="Удалить">${I("x")}</button></td></tr>`).join("");
+    const colClass = {
+      last_name: "col-last", first_name: "col-first", middle_name: "col-middle",
+      id_max: "col-max", phone: "col-phone", status: "col-status", id_curator: "col-curator",
+    };
+    const colgroup = cfg.fields.map(f => `<col class="${colClass[f] || ""}">`).join("") + '<col class="col-actions">';
+    $("#previewTable").innerHTML = state.modalRows.length ? `<table class="preview-users-table"><colgroup>${colgroup}</colgroup><thead><tr>${head}</tr></thead><tbody id="previewBody">${body}</tbody></table>` : `<div class="empty">Нет строк</div>`;
+    const stOpts = [{ value: "активен", label: "активен" }, { value: "не активен", label: "не активен" }];
+    const dirOpts = myCourses().map(c => ({ value: c.name, label: c.name }));
+    state.modalRows.forEach((row, ri) => {
+      cfg.fields.forEach(f => {
+        if (f === "status") {
+          const el = document.querySelector(`[data-sel="${ri}-status"]`);
+          modalSelectCmps.push(UI.createSelect(el, {
+            options: stOpts, value: row[f] || "активен",
+            onChange: v => { row[f] = v; }
+          }));
+        } else if (f === "direction") {
+          const el = document.querySelector(`[data-sel="${ri}-direction"]`);
+          modalSelectCmps.push(UI.createSelect(el, {
+            options: dirOpts, value: row[f] || dirOpts[0]?.value || "",
+            onChange: v => { row[f] = v; }
+          }));
+        } else if (f === "id_max" || f === "phone") {
+          const inp = document.querySelector(`[data-row="${ri}"][data-field="${f}"]`);
+          if (!inp) return;
+          inp.value = row[f] || "";
+          if (f === "id_max") {
+            modalFieldCmps.max[ri] = HrFields.attachMaxIdInput(inp, {
+              onChange: (v) => { row.id_max = v; }
+            });
+          } else {
+            modalFieldCmps.phone[ri] = HrFields.attachPhoneInput(inp, {
+              onChange: (v) => { row.phone = v; }
+            });
+          }
+        } else if (f === "id_curator") {
+          const comboEl = document.querySelector(`[data-cur-combo="${ri}"]`);
+          modalFieldCmps.curator[ri] = mountCuratorCombo(comboEl, row.id_curator || "", (v) => { row.id_curator = v; });
+        } else {
+          const inp = document.querySelector(`[data-row="${ri}"][data-field="${f}"]`);
+          if (!inp) return;
+          inp.value = row[f] || "";
+          inp.oninput = () => { row[f] = inp.value.trim(); };
+        }
+      });
+    });
+    $("#previewBody")?.querySelectorAll("[data-remove]").forEach(btn => btn.onclick = () => { state.modalRows.splice(+btn.dataset.remove, 1); renderPreviewTable(); });
+  }
+
+  function downloadTemplate() {
+    const cfg = MODAL_CONFIG[state.modalKey];
+    const example = {
+      last_name: "Иванов", first_name: "Иван", middle_name: "Иванович",
+      id_max: "123456789", phone: "+79001234567", status: "активен", id_curator: "",
+      name: "Backend-25", direction: myCourses()[0]?.name || "Backend", students: "Иванов Иван, Петров Пётр"
+    };
+    downloadWorkbook([cfg.fields.map(f => fieldLabel(f)), cfg.fields.map(f => example[f] || "")], "template_" + state.modalKey + ".xlsx");
+    showToast("Шаблон скачан", "info");
+  }
+
+  function normalizeImportedUserRow(row) {
+    if (row.fio && (!row.last_name || !row.first_name)) {
+      const parts = HrFields.parseFioParts(row.fio);
+      row.last_name = row.last_name || parts.last_name;
+      row.first_name = row.first_name || parts.first_name;
+      row.middle_name = row.middle_name || parts.middle_name;
+    }
+    delete row.fio;
+    if (row.id_curator) {
+      const v = String(row.id_curator).trim();
+      if (HrFields.isUuid(v)) row.id_curator = v;
+      else {
+        const hit = curatorComboList().find(c => c.name.toLowerCase() === v.toLowerCase())
+          || curatorComboList().find(c => c.name.toLowerCase().includes(v.toLowerCase()));
+        row.id_curator = hit ? hit.id : v;
+      }
+    }
+    if (row.phone) row.phone = HrFields.normalizePhone(row.phone) || row.phone;
+    if (row.id_max) row.id_max = HrFields.normalizeMaxId(row.id_max);
+    return row;
+  }
+
+  function importExcelFile(file) {
+    const cfg = MODAL_CONFIG[state.modalKey];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
+      if (aoa.length < 2) return showToast("Файл пуст", "warning");
+      const headers = aoa[0].map(h => String(h).toLowerCase().trim());
+      const map = {
+        "фио": "fio", "фамилия": "last_name", "имя": "first_name", "отчество": "middle_name",
+        "id max": "id_max", "телефон": "phone", "статус": "status", "id куратора": "id_curator", "куратор": "id_curator",
+        "название группы": "name", "направление": "direction", "название направления": "name", "ученики": "students", "ученики (фио через запятую)": "students"
+      };
+      const keys = headers.map(h => map[h] || h);
+      state.modalRows = aoa.slice(1).map(vals => {
+        const row = { _key: Date.now() + Math.random() };
+        keys.forEach((k, i) => { if (k) row[k] = String(vals[i] || "").trim(); });
+        return normalizeImportedUserRow(row);
+      }).filter(r => !isUserRowEmpty(r) || r.name);
+      renderPreviewTable();
+      showToast("Импортировано " + state.modalRows.length + " строк", "info");
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function saveModal() {
+    const key = state.modalKey;
+    const cfg = MODAL_CONFIG[key];
+    if (cfg.type !== "users") {
+      closeModal();
+      return;
+    }
+    collectModalRowValues();
+    const rows = HrFields.normalizeRows(state.modalRows).filter(r => !isUserRowEmpty(r));
+    const err = validateModalRows(rows, cfg);
+    if (err) return showToast(err, "warning");
+    try {
+      const bulkMode = state.bulkGroup.mode;
+      const result = await HrApi.createUsersBulk(rows, cfg.roleCode);
+      const createdIds = (result.created || []).map(u => u.id).filter(Boolean);
+      if (key === "students" && bulkMode !== "none" && createdIds.length) {
+        let groupId = null;
+        if (bulkMode === "existing") {
+          groupId = bulkGroupCmps.group?.getValue?.() || state.bulkGroup.groupId;
+        } else if (bulkMode === "new") {
+          const dirId = bulkGroupCmps.dir?.getValue?.() || state.bulkGroup.directionId;
+          const newName = ($("#bulkGroupNewName")?.value || "").trim();
+          if (!dirId || !newName) {
+            await reloadData();
+            closeModal();
+            return showToast("Ученики созданы, но укажите направление и название группы", "warning");
+          }
+          const created = await HrApi.createGroup({ name: newName, id_parent: dirId, status: "active" });
+          groupId = created.id;
+        }
+        if (groupId) await HrApi.bulkAddGroupMembers(groupId, createdIds);
+      }
+      await reloadData();
+      closeModal();
+      if (key === "students") state.pages.students = 1;
+      if (key === "teachers") state.pages.teachers = 1;
+      if (key === "curators") state.pages.curators = 1;
+      refreshUserLists();
+      const added = result.created_count || 0;
+      const skipped = result.skipped_count || 0;
+      const groupNote = key === "students" && bulkMode !== "none" ? " · назначены в группу" : "";
+      if (!added && skipped) {
+        const reason = result.skipped?.[0]?.reason;
+        showToast(reason ? `Никого не добавлено: ${reason}` : "Никого не добавлено — проверьте данные", "warning");
+      } else {
+        showToast(`Добавлено: ${added}${skipped ? " · пропущено: " + skipped : ""}${groupNote}`, added ? "success" : "warning");
+      }
+    } catch (err) {
+      showToast(err.message || "Ошибка добавления", "error");
+    }
+  }
+
+  function switchTab(tab) {
+    state.tab = tab;
+    if (tab === "groups") state.groupsView = "side";
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + tab));
+    ({ students: renderStudents, groups: renderGroups, teachers: renderTeachers, curators: renderCurators, attendance: renderAttendance, lessons: renderLessons, strikes: renderStrikes, notifications: renderNotifications, reports: renderReports })[tab]();
+  }
+
+  $("#tabs").onclick = (e) => { const tab = e.target.closest(".tab"); if (tab) switchTab(tab.dataset.tab); };
+  document.querySelector(".page").addEventListener("input", onPanelSearchInput);
+  $("#modalClose").onclick = closeModal;
+  $("#modalCancelBtn").onclick = closeModal;
+  $("#modalOverlay").onclick = (e) => { if (e.target === $("#modalOverlay")) closeModal(); };
+  $("#downloadTemplateBtn").onclick = downloadTemplate;
+  $("#addManualRowBtn").onclick = () => { state.modalRows.push(emptyModalRow(state.modalKey)); renderPreviewTable(); };
+  $("#modalSaveBtn").onclick = saveModal;
+  $("#importFile").onchange = (e) => { if (e.target.files[0]) importExcelFile(e.target.files[0]); e.target.value = ""; };
+  $("#editClose").onclick = closeEdit;
+  $("#editCancelBtn").onclick = closeEdit;
+  $("#editSaveBtn").onclick = saveEdit;
+  $("#editOverlay").onclick = (e) => { if (e.target === $("#editOverlay")) closeEdit(); };
+  $("#groupEditClose").onclick = closeGroupEditor;
+  $("#geCancelBtn").onclick = closeGroupEditor;
+  $("#geSaveBtn").onclick = saveGroupEditor;
+  $("#geTemplateBtn").onclick = downloadGroupTemplate;
+  $("#geImportFile").onchange = (e) => { if (e.target.files[0]) importGroupExcel(e.target.files[0]); e.target.value = ""; };
+  $("#groupOverlay").onclick = (e) => { if (e.target === $("#groupOverlay")) closeGroupEditor(); };
+  $("#assignTeacherClose").onclick = closeAssignTeacherModal;
+  $("#laCancelBtn").onclick = closeAssignTeacherModal;
+  $("#laSaveBtn").onclick = saveAssignTeacher;
+  $("#assignTeacherOverlay").onclick = (e) => { if (e.target === $("#assignTeacherOverlay")) closeAssignTeacherModal(); };
+  $("#banReasonClose").onclick = () => closeBanReasonModal(true);
+  $("#banReasonCancelBtn").onclick = () => closeBanReasonModal(true);
+  $("#banReasonSaveBtn").onclick = confirmBanReason;
+  $("#banReasonOverlay").onclick = (e) => { if (e.target === $("#banReasonOverlay")) closeBanReasonModal(true); };
+  $("#banReasonInput").onkeydown = (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) confirmBanReason();
+  };
+  $("#strikeHistoryClose").onclick = closeStrikeHistory;
+  $("#strikeHistoryOkBtn").onclick = closeStrikeHistory;
+  $("#strikeHistoryOverlay").onclick = (e) => { if (e.target === $("#strikeHistoryOverlay")) closeStrikeHistory(); };
+
+  $("#hrAvatar").textContent = hr ? (hr.firstName[0] + hr.lastName[0]).toUpperCase() : "HR";
+  $("#hrName").textContent = hr ? D.fullName(hr) : "HR";
+
+  renderStudents();
+})();
+  </script>
+</body>
+</html>

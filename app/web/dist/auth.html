@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход — MAX RASS</title>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="icons.css">
+  <link rel="stylesheet" href="auth.css">
+</head>
+<body>
+  <main class="shell">
+      <section class="auth-card auth-panel active" id="panelKeycloak" aria-label="Вход через Keycloak">
+        <div class="card-header">
+          <h2>Вход в систему</h2>
+          <p>Корпоративная учетная запись</p>
+        </div>
+
+        <form id="loginForm" novalidate>
+          <div class="field">
+            <label for="username">Логин или email</label>
+            <input id="username" name="username" type="text" autocomplete="username" placeholder="ivanov@company.ru" required>
+          </div>
+
+          <div class="field">
+            <label for="password">Пароль</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+          </div>
+
+          <p class="error" id="formError" role="alert"></p>
+
+          <div class="row">
+            <label><input type="checkbox" id="remember"> Запомнить меня</label>
+            <a href="#" id="forgotLink">Забыли пароль?</a>
+          </div>
+
+          <button class="auth-btn auth-btn-primary" type="submit" id="submitBtn" data-icon="login">Войти</button>
+        </form>
+
+        <div class="divider">или</div>
+
+        <button class="auth-btn auth-btn-max" type="button" id="maxLoginBtn" data-icon="phone">Войти через MAX</button>
+      </section>
+
+      <!-- MAX passwordless confirmation -->
+      <section class="auth-card auth-panel" id="panelMax" aria-label="Подтверждение входа через MAX">
+        <div class="max-wait">
+          <div class="spinner" aria-hidden="true"></div>
+          <div class="max-icon">MAX</div>
+          <h3>Подтвердите вход</h3>
+          <p>Откройте MAX и нажмите «Подтвердить» в сообщении от бота.</p>
+          <span class="timer" id="timer">Осталось 5:00</span>
+          <button class="auth-btn auth-btn-primary" type="button" id="maxConfirmDemo" data-icon="check">Подтвердить (демо)</button>
+          <br>
+          <button class="back-link" type="button" id="backToKeycloak">Вернуться к входу</button>
+        </div>
+      </section>
+  </main>
+
+  <script src="icons.js"></script>
+  <script>
+    /*
+     * Keycloak OIDC (production):
+     *
+     * const params = new URLSearchParams({
+     *   client_id: 'hr-web',           // или teacher-web
+     *   redirect_uri: 'https://app.example.com/callback',
+     *   response_type: 'code',
+     *   scope: 'openid profile email',
+     *   code_challenge: '<PKCE>',
+     *   code_challenge_method: 'S256',
+     * });
+     * window.location.href =
+     *   'https://auth.example.com/realms/max-education/protocol/openid-connect/auth?' + params;
+     *
+     * Форма логина/пароля в production рендерится Keycloak custom theme (login.ftl).
+     * Этот HTML — прототип внешнего вида темы max-rass.
+     */
+
+    const KEYCLOAK_AUTH_URL = 'https://auth.example.com/realms/max-education/protocol/openid-connect/auth';
+    const REDIRECT_URI = 'https://app.example.com/callback';
+    const CLIENT_ID = 'hr-web';
+
+    const panelKeycloak = document.getElementById('panelKeycloak');
+    const panelMax = document.getElementById('panelMax');
+    const loginForm = document.getElementById('loginForm');
+    const formError = document.getElementById('formError');
+    const submitBtn = document.getElementById('submitBtn');
+    const forgotLink = document.getElementById('forgotLink');
+    const maxLoginBtn = document.getElementById('maxLoginBtn');
+    const backToKeycloak = document.getElementById('backToKeycloak');
+    const maxConfirmDemo = document.getElementById('maxConfirmDemo');
+    const timerEl = document.getElementById('timer');
+
+    let timerInterval = null;
+    let secondsLeft = 300;
+
+    function showPanel(name) {
+      panelKeycloak.classList.toggle('active', name === 'keycloak');
+      panelMax.classList.toggle('active', name === 'max');
+    }
+
+    function buildKeycloakUrl() {
+      const params = new URLSearchParams({
+        client_id: CLIENT_ID,
+        redirect_uri: REDIRECT_URI,
+        response_type: 'code',
+        scope: 'openid profile email',
+      });
+      return KEYCLOAK_AUTH_URL + '?' + params.toString();
+    }
+
+    function redirectByRole(username) {
+      const lower = username.toLowerCase();
+      if (lower.includes('admin') || lower.includes('админ')) {
+        window.location.href = 'admin-dashboard.html';
+      } else if (lower.includes('teacher') || lower.includes('prep') || lower.includes('prof') || lower.includes('препод')) {
+        window.location.href = 'teacher-dashboard.html';
+      } else {
+        window.location.href = 'hr-dashboard.html';
+      }
+    }
+
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      formError.classList.remove('visible');
+
+      const username = document.getElementById('username');
+      const password = document.getElementById('password');
+      username.classList.remove('invalid');
+      password.classList.remove('invalid');
+
+      if (!username.value.trim() || !password.value) {
+        formError.textContent = 'Введите логин и пароль';
+        formError.classList.add('visible');
+        if (!username.value.trim()) username.classList.add('invalid');
+        if (!password.value) password.classList.add('invalid');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Проверка…';
+
+      // Production: форма отправляется на Keycloak loginAction, не на ваш backend
+      setTimeout(() => {
+        redirectByRole(username.value.trim());
+      }, 600);
+    });
+
+    forgotLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      alert('Production: redirect на Keycloak reset-credentials\n' + buildKeycloakUrl().replace('/auth?', '/login-actions/reset-credentials?'));
+    });
+
+    function startTimer() {
+      clearInterval(timerInterval);
+      secondsLeft = 300;
+      timerInterval = setInterval(() => {
+        secondsLeft -= 1;
+        const m = Math.floor(secondsLeft / 60);
+        const s = String(secondsLeft % 60).padStart(2, '0');
+        timerEl.textContent = 'Осталось ' + m + ':' + s;
+        if (secondsLeft <= 0) {
+          clearInterval(timerInterval);
+          timerEl.textContent = 'Время истекло';
+        }
+      }, 1000);
+    }
+
+    maxLoginBtn.addEventListener('click', () => {
+      showPanel('max');
+      startTimer();
+      // Production: POST /api/v1/auth/max/start → session_id + deep link
+    });
+
+    backToKeycloak.addEventListener('click', () => {
+      clearInterval(timerInterval);
+      showPanel('keycloak');
+    });
+
+    maxConfirmDemo.addEventListener('click', () => {
+      maxConfirmDemo.disabled = true;
+      maxConfirmDemo.textContent = 'Вход…';
+      clearInterval(timerInterval);
+      setTimeout(() => {
+        window.location.href = 'hr-dashboard.html';
+      }, 500);
+    });
+  </script>
+</body>
+</html>

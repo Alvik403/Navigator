@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MAX RASS — модель базы данных</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --text: #172033;
+      --muted: #5f6b7a;
+      --border: #d8dee8;
+      --accent: #2457c5;
+      --accent-soft: #eef3ff;
+      --code: #101828;
+      --green: #0d7a4a;
+      --green-soft: #ecfdf3;
+      --red: #b42318;
+      --red-soft: #fef3f2;
+      --yellow: #b54708;
+      --yellow-soft: #fffaeb;
+      --purple: #6941c6;
+      --purple-soft: #f4ebff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.6 "Segoe UI", Arial, sans-serif;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 24px 56px;
+    }
+
+    header {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+
+    h1, h2, h3 { line-height: 1.25; margin: 0 0 14px; }
+    h1 { font-size: 30px; max-width: 900px; }
+    h2 { font-size: 24px; margin-top: 36px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    h3 { font-size: 18px; margin-top: 24px; }
+    p { margin: 0 0 14px; }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .pill {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid #d6e1ff;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 26px;
+      margin: 18px 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      background: #fbfcfe;
+    }
+
+    .card strong { display: block; margin-bottom: 6px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: var(--surface);
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { background: #f0f3f8; font-weight: 700; }
+
+    code {
+      background: #eef1f6;
+      border-radius: 5px;
+      padding: 1px 5px;
+      color: var(--code);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.94em;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+      font: 13px/1.5 Consolas, "Courier New", monospace;
+      margin: 14px 0 22px;
+    }
+
+    ul, ol { padding-left: 22px; margin: 0 0 16px; }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 14px 16px;
+      border-radius: 10px;
+      margin: 16px 0;
+    }
+
+    .note-warn {
+      border-left-color: var(--yellow);
+      background: var(--yellow-soft);
+    }
+
+    .note-danger {
+      border-left-color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .muted { color: var(--muted); }
+
+    .table-tag {
+      display: inline-block;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .role-badge {
+      display: inline-block;
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .role-admin   { background: var(--red-soft);    color: var(--red); }
+    .role-hr      { background: var(--purple-soft); color: var(--purple); }
+    .role-teacher { background: var(--accent-soft); color: var(--accent); }
+    .role-curator { background: var(--yellow-soft);  color: var(--yellow); }
+    .role-employee{ background: var(--green-soft);  color: var(--green); }
+
+    .perm-yes { color: var(--green); font-weight: 700; }
+    .perm-no  { color: var(--muted); }
+    .perm-own { color: var(--accent); font-weight: 600; }
+
+    .toc a { text-decoration: none; color: var(--accent); }
+    .toc li { margin-bottom: 6px; }
+
+    @media print {
+      body { background: #fff; }
+      main { max-width: none; padding: 0; }
+      header, .section { border: 0; border-radius: 0; page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<main>
+
+  <header>
+    <h1>MAX RASS — модель базы данных</h1>
+    <p class="muted">Описание таблиц, связей, бизнес-логики и ролевой модели. Авторизация через Keycloak, уведомления через MAX-бот, система страйков.</p>
+    <div class="meta">
+      <span class="pill">Версия 1.1</span>
+      <span class="pill">Дата: 10.06.2026</span>
+      <span class="pill">PostgreSQL</span>
+      <span class="pill">Auth: Keycloak</span>
+      <span class="pill">11 таблиц</span>
+    </div>
+  </header>
+
+  <section class="section toc">
+    <h2>Содержание</h2>
+    <ol>
+      <li><a href="#overview">Общий подход</a></li>
+      <li><a href="#tables">Описание таблиц</a></li>
+      <li><a href="#relations">Связи между таблицами</a></li>
+      <li><a href="#explain">Пояснения и бизнес-логика</a></li>
+      <li><a href="#strikes">Система страйков</a></li>
+      <li><a href="#notifications">Уведомления и куратор</a></li>
+      <li><a href="#roles">Ролевая модель</a></li>
+    </ol>
+  </section>
+
+  <section class="section" id="overview">
+    <h2>1. Общий подход</h2>
+    <div class="grid">
+      <div class="card"><strong>Keycloak</strong>Логин, пароль, роли доступа. В БД паролей нет.</div>
+      <div class="card"><strong>PostgreSQL</strong>Профили, группы, занятия, страйки, уведомления.</div>
+      <div class="card"><strong>MAX-бот</strong>Регистрация, уведомления, страйки. <code>max_user_id</code> в профиле.</div>
+      <div class="card"><strong>Одна БД</strong>На старте одна schema <code>app</code>, без микросервисных схем.</div>
+    </div>
+    <div class="note">
+      <strong>Принцип разделения:</strong> таблица <code>users</code> — только связь с Keycloak.
+      Таблица <code>profiles</code> — все бизнес-данные: ФИО, роль, MAX, телефон, куратор.
+    </div>
+  </section>
+
+  <section class="section" id="tables">
+    <h2>2. Описание таблиц</h2>
+
+    <h3><span class="table-tag">users</span> — связь с Keycloak</h3>
+    <p class="muted">Минимальная учётная запись. Логин и пароль хранятся только в Keycloak.</p>
+    <table>
+      <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>UUID, PK</td><td>Идентификатор в нашей системе</td></tr>
+        <tr><td><code>keycloak_user_id</code></td><td>UUID, UNIQUE</td><td>ID пользователя в Keycloak (<code>sub</code> из JWT)</td></tr>
+        <tr><td><code>is_active</code></td><td>BOOLEAN</td><td>Учётная запись включена / заблокирована</td></tr>
+        <tr><td><code>created_at</code></td><td>TIMESTAMP</td><td>Дата создания</td></tr>
+      </tbody>
+    </table>
+
+    <h3><span class="table-tag">profiles</span> — профиль пользователя</h3>
+    <p class="muted">Центральная таблица. Один профиль на одного пользователя.</p>
+    <table>
+      <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>UUID, PK</td><td>Идентификатор профиля</td></tr>
+        <tr><td><code>user_id</code></td><td>UUID, FK → users, UNIQUE</td><td>Связь с учётной записью</td></tr>
+        <tr><td><code>last_name</code></td><td>VARCHAR</td><td>Фамилия</td></tr>
+        <tr><td><code>first_name</code></td><td>VARCHAR</td><td>Имя</td></tr>
+        <tr><td><code>middle_name</code></td><td>VARCHAR, NULL</td><td>Отчество</td></tr>
+        <tr><td><code>role</code></td><td>ENUM</td><td><code>employee</code> · <code>teacher</code> · <code>curator</code> · <code>hr</code> · <code>admin</code></td></tr>
+        <tr><td><code>direction_id</code></td><td>UUID, FK → directions, NULL</td><td>Основное направление</td></tr>
+        <tr><td><code>phone</code></td><td>VARCHAR, NULL</td><td>Телефон — не у всех есть</td></tr>
+        <tr><td><code>max_user_id</code></td><td>BIGINT, NULL, UNIQUE</td><td>ID в MAX — не у всех есть</td></tr>
+        <tr><td><code>curator_id</code></td><td>UUID, FK → profiles, NULL</td><td>Куратор (только для сотрудников без MAX/телефона)</td></tr>
+        <tr><td><code>status</code></td><td>ENUM</td><td><code>pending</code> · <code>active</code> · <code>inactive</code> · <code>banned</code></td></tr>
+        <tr><td><code>banned_at</code></td><td>TIMESTAMP, NULL</td><td>Дата блокировки (при 3 страйках)</td></tr>
+        <tr><td><code>created_at</code></td><td>TIMESTAMP</td><td>Дата создания</td></tr>
+        <tr><td><code>updated_at</code></td><td>TIMESTAMP</td><td>Дата последнего изменения</td></tr>
+      </tbody>
+    </table>
+
+    <h3><span class="table-tag">directions</span> — направления обучения</h3>
+    <table>
+      <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>UUID, PK</td><td>Идентификатор</td></tr>
+        <tr><td><code>name</code></td><td>VARCHAR, UNIQUE</td><td>Название (Frontend, Backend, Design…)</td></tr>
+        <tr><td><code>description</code></td><td>TEXT, NULL</td><td>Описание</td></tr>
+        <tr><td><code>is_active</code></td><td>BOOLEAN</td><td>Активно / архив</td></tr>
+      </tbody>
+    </table>
+
+    <h3><span class="table-tag">groups</span> — рабочие группы</h3>
+    <table>
+      <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>UUID, PK</td><td>Идентификатор группы</td></tr>
+        <tr><td><code>direction_id</code></td><td>UUID, FK → directions</td><td>Направление группы</td></tr>
+        <tr><td><code>name</code></td><td>VARCHAR</td><td>Название (Frontend-24, Backend-22…)</td></tr>
+        <tr><td><code>teacher_id</code></td><td>UUID, FK → profiles</td><td>Преподаватель группы</td></tr>
+        <tr><td><code>status</code></td><td>ENUM</td><td><code>forming</code> · <code>active</code> · <code>archived</code></td></tr>
+        <tr><td><code>created_at</code></td><td>TIMESTAMP</td><td>Дата создания</td></tr>
+      </tbody>
+    </table>
+
+    <h3><span class="table-tag">group_members</span> — участники группы</h3>
+    <table>
+      <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>UUID, PK</td><td>Идентификатор записи</td></tr>
+        <tr><td><code>group_id</code></td><td>UUID, FK → groups</td><td>Группа</td></tr>
+        <tr><td><code>profile_id</code></td><td>UUID, FK → profiles</td><td>Участник</td></tr>
+        <tr><td><code>status</code></td><td>ENUM</td><td><code>active</code> · <code>left</code> · <code>reserve</code></td></tr>
+        <tr><td><code>joined_at</code></td><td>TIMESTAMP</td><td>Дата добавления</td></tr>
+        <tr><td><code>left_at</code></td><td>TIMESTAMP, NULL</td><td>Дата выхода из группы</td></tr>
+      </tbody>
+    </table>
+
+    <h3><span class="table-tag">lessons</span> — занятия</h3>
+    <table>
+      <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>UUID, PK</td><td>Идентификатор занятия</td></tr>
+        <tr><td><code>group_id</code></td><td>UUID, FK → groups</td><td>Группа</td></tr>
+        <tr><td><code>teacher_id</code></td><td>UUID, FK → profiles</td><td>Преподаватель</td></tr>
+        <tr><td><code>starts_at</code></td><td>TIMESTAMP</td><td>Начало</td></tr>
+        <tr><td><code>ends_at</code></td><td>TIMESTAMP</td><td>Конец</td></tr>
+        <tr><td><code>status</code></td><td>ENUM</td><td><code>planned</code> · <code>ongoing</code> · <code>completed</code> · <code>cancelled</code></td></tr>
+        <tr><td><code>topic</code></td><td>VARCHAR, NULL</td><td>Тема занятия</td></tr>
+        <tr><td><code>location_type</code></td><td>ENUM</td><td><code>offline</code> · <code>online</code></td></tr>
+        <tr><td><code>address</code></td><td>VARCHAR, NULL</td><td>Адрес (offline)</td></tr>
+        <tr><td><code>url</code></td><td>VARCHAR, NULL</td><td>Ссылка (online)</td></tr>
+      </tbody>
+    </table>
+
+    <h3><span class="table-tag">attendance</span> — посещаемость</h3>
+    <table>
+      <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>UUID, PK</td><td>Идентификатор</td></tr>
+        <tr><td><code>lesson_id</code></td><td>UUID, FK → lessons</td><td>Занятие</td></tr>
+        <tr><td><code>profile_id</code></td><td>UUID, FK → profiles</td><td>Сотрудник</td></tr>
+        <tr><td><code>status</code></td><td>ENUM</td><td><code>present</code> · <code>absent</code> · <code>late</code> · <code>excused</code> · <code>unknown</code></td></tr>
+        <tr><td><code>marked_by</code></td><td>UUID, FK → profiles</td><td>Кто отметил</td></tr>
+        <tr><td><code>marked_at</code></td><td>TIMESTAMP</td><td>Когда отметили</td></tr>
+      </tbody>
+    </table>
+
+    <h3><span class="table-tag">strikes</span> — страйки</h3>
+    <table>
+      <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>UUID, PK</td><td>Идентификатор</td></tr>
+        <tr><td><code>profile_id</code></td><td>UUID, FK → profiles</td><td>Кому выдали</td></tr>
+        <tr><td><code>lesson_id</code></td><td>UUID, FK → lessons, NULL</td><td>За какое занятие</td></tr>
+        <tr><td><code>reason</code></td><td>ENUM</td><td><code>absent</code> · <code>late</code> · <code>manual</code></td></tr>
+        <tr><td><code>comment</code></td><td>TEXT, NULL</td><td>Комментарий</td></tr>
+        <tr><td><code>issued_by</code></td><td>UUID, FK → profiles, NULL</td><td>Кто выдал (NULL = автоматически)</td></tr>
+        <tr><td><code>strike_number</code></td><td>INT</td><td>Номер страйка: 1, 2 или 3</td></tr>
+        <tr><td><code>is_revoked</code></td><td>BOOLEAN</td><td>Отменён HR или нет</td></tr>
+        <tr><td><code>created_at</code></td><td>TIMESTAMP</td><td>Дата выдачи</td></tr>
+      </tbody>
+    </table>
+
+    <h3><span class="table-tag">notifications</span> — уведомления</h3>
+    <table>
+      <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>UUID, PK</td><td>Идентификатор</td></tr>
+        <tr><td><code>recipient_id</code></td><td>UUID, FK → profiles</td><td>Кому по смыслу (сотрудник)</td></tr>
+        <tr><td><code>delivered_to_id</code></td><td>UUID, FK → profiles</td><td>Кому реально отправили</td></tr>
+        <tr><td><code>channel</code></td><td>ENUM</td><td><code>max</code> · <code>sms</code> · <code>email</code></td></tr>
+        <tr><td><code>via_curator</code></td><td>BOOLEAN</td><td>Отправлено через куратора</td></tr>
+        <tr><td><code>template_code</code></td><td>VARCHAR</td><td>Код шаблона (<code>strike_warning</code>, <code>strike_ban</code>…)</td></tr>
+        <tr><td><code>message</code></td><td>TEXT</td><td>Текст сообщения</td></tr>
+        <tr><td><code>status</code></td><td>ENUM</td><td><code>pending</code> · <code>sent</code> · <code>failed</code></td></tr>
+        <tr><td><code>created_at</code></td><td>TIMESTAMP</td><td>Дата создания</td></tr>
+        <tr><td><code>sent_at</code></td><td>TIMESTAMP, NULL</td><td>Дата отправки</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section" id="relations">
+    <h2>3. Связи между таблицами</h2>
+
+    <pre>
+users (1) ──────────── (1) profiles
+                              │
+              ┌───────────────┼────────────────┐
+              │               │                │
+         curator_id      direction_id        role
+         (self-ref)           │                │
+              │               ▼                │
+              │         directions           │
+              │               │                │
+              └──────► groups ◄───────────────┘ (teacher_id)
+                          │
+                   group_members
+                          │
+                       lessons ──────► attendance
+                          │                │
+                       strikes ◄───────────┘
+                          │
+                    notifications
+    </pre>
+
+    <table>
+      <thead>
+        <tr><th>От</th><th>К</th><th>Тип</th><th>Описание</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>users</code></td><td><code>profiles</code></td><td>1 : 1</td><td>Один пользователь — один профиль</td></tr>
+        <tr><td><code>profiles</code></td><td><code>profiles</code></td><td>N : 1</td><td>Сотрудник → свой куратор (<code>curator_id</code>)</td></tr>
+        <tr><td><code>directions</code></td><td><code>profiles</code></td><td>1 : N</td><td>Направление → сотрудники</td></tr>
+        <tr><td><code>directions</code></td><td><code>groups</code></td><td>1 : N</td><td>Направление → группы</td></tr>
+        <tr><td><code>profiles</code></td><td><code>groups</code></td><td>1 : N</td><td>Преподаватель ведёт группы</td></tr>
+        <tr><td><code>groups</code></td><td><code>group_members</code></td><td>1 : N</td><td>Группа → участники</td></tr>
+        <tr><td><code>profiles</code></td><td><code>group_members</code></td><td>1 : N</td><td>Сотрудник состоит в группах</td></tr>
+        <tr><td><code>groups</code></td><td><code>lessons</code></td><td>1 : N</td><td>Группа → занятия</td></tr>
+        <tr><td><code>lessons</code></td><td><code>attendance</code></td><td>1 : N</td><td>Занятие → отметки посещаемости</td></tr>
+        <tr><td><code>profiles</code></td><td><code>strikes</code></td><td>1 : N</td><td>Сотрудник → страйки</td></tr>
+        <tr><td><code>lessons</code></td><td><code>strikes</code></td><td>1 : N</td><td>Занятие → страйки за него</td></tr>
+        <tr><td><code>profiles</code></td><td><code>notifications</code></td><td>1 : N</td><td>Получатель и адресат доставки</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <strong>Keycloak</strong> не входит в PostgreSQL. Связь: <code>users.keycloak_user_id</code> = поле <code>sub</code> из JWT-токена Keycloak.
+    </div>
+  </section>
+
+  <section class="section" id="explain">
+    <h2>4. Пояснения и бизнес-логика</h2>
+
+    <h3>Статусы профиля (<code>profiles.status</code>)</h3>
+    <table>
+      <thead><tr><th>Статус</th><th>Значение</th><th>Что можно</th></tr></thead>
+      <tbody>
+        <tr><td><code>pending</code></td><td>Ожидает подтверждения HR</td><td>Ничего — HR должен проверить и активировать</td></tr>
+        <tr><td><code>active</code></td><td>Активен, работает</td><td>Группы, занятия, уведомления, посещаемость</td></tr>
+        <tr><td><code>inactive</code></td><td>Ушёл из программы</td><td>Только просмотр истории, без новых действий</td></tr>
+        <tr><td><code>banned</code></td><td>Заблокирован (3 страйка)</td><td>Ничего — только HR может разбанить</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Регистрация через MAX</h3>
+    <ol>
+      <li>Пользователь нажимает «Регистрация» в MAX-боте.</li>
+      <li>Система создаёт <code>users</code> + <code>profiles</code> со статусом <code>pending</code>.</li>
+      <li>Заполняется <code>max_user_id</code> из webhook MAX.</li>
+      <li>HR проверяет данные → меняет статус на <code>active</code>, назначает направление и куратора (если нужно).</li>
+    </ol>
+
+    <h3>Сотрудник без MAX и телефона</h3>
+    <p>HR создаёт профиль вручную: <code>max_user_id = NULL</code>, <code>phone = NULL</code>, назначает <code>curator_id</code>.
+    Все уведомления идут куратору с пометкой <code>via_curator = true</code>.</p>
+
+    <h3>Посещаемость</h3>
+    <p>Преподаватель закрывает занятие → для каждого участника создаётся запись в <code>attendance</code>.
+    Если статус <code>absent</code> — автоматически выдаётся страйк (см. раздел 5).</p>
+  </section>
+
+  <section class="section" id="strikes">
+    <h2>5. Система страйков</h2>
+
+    <div class="grid">
+      <div class="card"><strong>1 страйк</strong>Уведомление: «У вас 1 из 3 страйков»</div>
+      <div class="card"><strong>2 страйка</strong>Уведомление: «У вас 2 из 3 страйков»</div>
+      <div class="card"><strong>3 страйка</strong>Бан + уведомление: «Доступ заблокирован»</div>
+    </div>
+
+    <h3>Когда выдаётся страйк</h3>
+    <table>
+      <thead><tr><th>Событие</th><th>Страйк?</th></tr></thead>
+      <tbody>
+        <tr><td><code>absent</code> — не пришёл</td><td class="perm-yes">✓ Да</td></tr>
+        <tr><td><code>late</code> — опоздал</td><td class="perm-no">✗ Нет (на старте)</td></tr>
+        <tr><td><code>excused</code> — уважительная причина</td><td class="perm-no">✗ Нет</td></tr>
+        <tr><td><code>present</code> — пришёл</td><td class="perm-no">✗ Нет</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Алгоритм</h3>
+    <pre>
+Преподаватель закрывает занятие
+  → для каждого absent (не excused):
+      1. Посчитать активные страйки (is_revoked = false)
+      2. Если уже banned — пропустить
+      3. INSERT strikes, strike_number = count + 1
+      4. Отправить уведомление «У вас N из 3»
+      5. Если strike_number = 3:
+           profiles.status = banned
+           profiles.banned_at = now()
+           Отправить уведомление о бане
+    </pre>
+
+    <h3>Тексты уведомлений</h3>
+    <table>
+      <thead><tr><th>Шаблон</th><th>Текст</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>strike_warning</code></td>
+          <td>Вам выдан страйк за непосещение занятия «{тема}» ({дата}). У вас {N} из 3 страйков. При 3 страйках доступ будет заблокирован.</td>
+        </tr>
+        <tr>
+          <td><code>strike_ban</code></td>
+          <td>У вас 3 из 3 страйков. Доступ к занятиям заблокирован. Обратитесь к HR или куратору.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note note-danger">
+      <strong>Разбан:</strong> только HR вручную. HR может отменить страйк (<code>is_revoked = true</code>) — если была уважительная причина.
+    </div>
+  </section>
+
+  <section class="section" id="notifications">
+    <h2>6. Уведомления и куратор</h2>
+
+    <h3>Куда отправлять</h3>
+    <pre>
+1. profile.max_user_id есть?  → MAX напрямую
+2. profile.phone есть?        → SMS
+3. profile.curator_id есть?   → MAX/SMS куратору (via_curator = true)
+4. Иначе                      → status = failed, HR видит проблему
+    </pre>
+
+    <h3>Пример: сотрудник без MAX, с куратором</h3>
+    <table>
+      <thead><tr><th>Поле</th><th>Значение</th></tr></thead>
+      <tbody>
+        <tr><td><code>recipient_id</code></td><td>Иванов (сотрудник)</td></tr>
+        <tr><td><code>delivered_to_id</code></td><td>Петров (куратор)</td></tr>
+        <tr><td><code>via_curator</code></td><td>true</td></tr>
+        <tr><td><code>message</code></td><td>Иванов И. — завтра занятие в 10:00</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section" id="roles">
+    <h2>7. Ролевая модель</h2>
+    <p class="muted">Роли хранятся в Keycloak (доступ к сайтам) и дублируются в <code>profiles.role</code> (бизнес-логика).</p>
+
+    <div class="grid" style="margin-bottom: 20px;">
+      <div class="card"><span class="role-badge role-admin">admin</span> Полный доступ ко всему</div>
+      <div class="card"><span class="role-badge role-hr">hr</span> Управление сотрудниками и группами</div>
+      <div class="card"><span class="role-badge role-teacher">teacher</span> Свои группы и занятия</div>
+      <div class="card"><span class="role-badge role-curator">curator</span> Получает уведомления за подопечных</div>
+      <div class="card"><span class="role-badge role-employee">employee</span> Сотрудник / участник группы</div>
+    </div>
+
+    <h3>Матрица прав</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Действие</th>
+          <th><span class="role-badge role-admin">admin</span></th>
+          <th><span class="role-badge role-hr">hr</span></th>
+          <th><span class="role-badge role-teacher">teacher</span></th>
+          <th><span class="role-badge role-curator">curator</span></th>
+          <th><span class="role-badge role-employee">employee</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Вход на HR-сайт</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Вход на сайт преподавателя</td>
+          <td class="perm-yes">✓</td><td class="perm-no">—</td>
+          <td class="perm-yes">✓</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Использование MAX-бота</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+        </tr>
+        <tr>
+          <td>Создание / редактирование профилей</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Подтверждение регистрации (<code>pending → active</code>)</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Назначение куратора сотруднику</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Управление направлениями</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Создание / редактирование групп</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Добавление участников в группу</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Создание / редактирование занятий</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-own">✓ свои</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Отметка посещаемости</td>
+          <td class="perm-yes">✓</td><td class="perm-no">—</td>
+          <td class="perm-own">✓ свои</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Закрытие занятия (→ страйки)</td>
+          <td class="perm-yes">✓</td><td class="perm-no">—</td>
+          <td class="perm-own">✓ свои</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Просмотр своих страйков</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓ все</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td><td class="perm-own">✓ свои</td>
+        </tr>
+        <tr>
+          <td>Отмена страйка / разбан</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td><td class="perm-no">—</td>
+        </tr>
+        <tr>
+          <td>Просмотр своего расписания</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-own">✓ свои</td><td class="perm-no">—</td><td class="perm-own">✓ свои</td>
+        </tr>
+        <tr>
+          <td>Получение уведомлений (MAX / SMS)</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓</td>
+          <td class="perm-yes">✓</td><td class="perm-yes">✓ + за подопечных</td><td class="perm-yes">✓</td>
+        </tr>
+        <tr>
+          <td>Регистрация через MAX-бот</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td>
+          <td class="perm-no">—</td><td class="perm-no">—</td><td class="perm-yes">✓</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note note-warn">
+      <strong>Обозначения:</strong>
+      <span class="perm-yes">✓</span> — полный доступ &nbsp;|&nbsp;
+      <span class="perm-own">✓ свои</span> — только свои группы / занятия &nbsp;|&nbsp;
+      <span class="perm-no">—</span> — нет доступа
+    </div>
+
+    <h3>Keycloak — роли realm</h3>
+    <table>
+      <thead><tr><th>Роль Keycloak</th><th>Доступ</th></tr></thead>
+      <tbody>
+        <tr><td><code>admin</code></td><td>HR-сайт + сайт преподавателя + все API</td></tr>
+        <tr><td><code>hr_manager</code></td><td>HR-сайт</td></tr>
+        <tr><td><code>teacher</code></td><td>Сайт преподавателя</td></tr>
+        <tr><td><code>curator</code></td><td>MAX-бот (получение уведомлений)</td></tr>
+        <tr><td><code>employee</code></td><td>MAX-бот (регистрация, расписание, страйки)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="section muted" style="text-align:center; font-size:13px;">
+    MAX RASS · Модель базы данных v1.1 · PostgreSQL + Keycloak · 10.06.2026
+  </footer>
+
+</main>
+</body>
+</html>

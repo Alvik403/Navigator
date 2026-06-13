@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Преподаватель — тест API — MAX RASS</title>
+  <link rel="stylesheet" href="/test-portal.css">
+  <script src="/auth-guard.js"></script>
+  <script src="/api-client.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div>
+        <h1>Преподаватель — тестовая панель</h1>
+        <p>Keycloak + REST API · <span class="badge">/api/v1/teacher/*</span></p>
+      </div>
+      <div class="user">
+        <div class="avatar" id="testAvatar">—</div>
+        <div><span id="testUserName">—</span><br><span>Преподаватель</span></div>
+        <a class="logout" href="/logout">Выйти</a>
+        <a class="logout" href="/hr-test.html" style="margin-left:8px">HR</a>
+      </div>
+    </header>
+
+    <section class="stats" id="stats"></section>
+
+    <div class="toolbar">
+      <button type="button" class="btn secondary" id="seedBtn">Загрузить demo-данные</button>
+      <button type="button" class="btn secondary" id="refreshBtn">Обновить всё</button>
+    </div>
+
+    <nav class="tabs" id="tabs">
+      <button type="button" class="tab active" data-tab="groups">Группы</button>
+      <button type="button" class="tab" data-tab="schedule">Расписание</button>
+      <button type="button" class="tab" data-tab="attendance">Посещаемость</button>
+      <button type="button" class="tab" data-tab="reports">Отчёты</button>
+    </nav>
+
+    <section class="panel active" id="panel-groups">
+      <div class="card">
+        <h2>Доступные рабочие группы</h2>
+        <button type="button" class="btn secondary small" id="loadGroupsBtn">GET /groups</button>
+        <div id="groupsList" style="margin-top:14px"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-schedule">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Расписание занятий</h2>
+          <div class="toolbar">
+            <label><input type="checkbox" id="allTeachers"> Все преподаватели</label>
+            <button type="button" class="btn secondary small" id="loadLessonsBtn">GET /lessons</button>
+          </div>
+          <div id="lessonsList"></div>
+        </div>
+        <div class="card">
+          <h2>Создать / изменить занятие</h2>
+          <form id="createLessonForm">
+            <div class="field"><label>ID группы</label><input id="clGroupId" required></div>
+            <div class="field"><label>Начало</label><input id="clStart" type="datetime-local" required></div>
+            <div class="field"><label>Конец</label><input id="clEnd" type="datetime-local" required></div>
+            <div class="field"><label>Аудитория</label><input id="clPlace" placeholder="301"></div>
+            <div class="field"><label>Тип</label>
+              <select id="clType"><option value="practice">practice</option><option value="lecture">lecture</option></select>
+            </div>
+            <div class="field"><label>ID преподавателя (опц.)</label><input id="clTeacherId"></div>
+            <button type="submit" class="btn">POST /lessons</button>
+          </form>
+          <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
+          <form id="updateLessonForm">
+            <div class="field"><label>ID занятия</label><input id="ulLessonId" required></div>
+            <div class="field"><label>Новое начало</label><input id="ulStart" type="datetime-local"></div>
+            <div class="field"><label>Новый конец</label><input id="ulEnd" type="datetime-local"></div>
+            <div class="field"><label>Аудитория</label><input id="ulPlace"></div>
+            <div class="field"><label>ID преподавателя</label><input id="ulTeacherId"></div>
+            <button type="submit" class="btn secondary">PATCH /lessons/{id}</button>
+          </form>
+          <div class="toast" id="toastSchedule"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-attendance">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Отметка присутствующих</h2>
+          <div class="toolbar">
+            <input id="attLessonId" placeholder="ID занятия">
+            <button type="button" class="btn secondary" id="loadAttendanceBtn">GET /lessons/{id}/attendance</button>
+          </div>
+          <div id="attendanceList"></div>
+        </div>
+        <div class="card">
+          <h2>Сохранить посещаемость</h2>
+          <p style="color:var(--muted);font-size:13px;margin:0 0 12px">Отметьте статус и нажмите «Сохранить» — отправится POST /lessons/{id}/attendance</p>
+          <button type="button" class="btn" id="saveAttendanceBtn" disabled>Сохранить отметки</button>
+          <div class="toast" id="toastAttendance"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-reports">
+      <div class="card">
+        <h2>Отчёты по посещаемости</h2>
+        <div class="toolbar">
+          <input id="reportGroupId" placeholder="Фильтр group_id (опц.)">
+          <button type="button" class="btn secondary" id="reportGroupsBtn">GET /reports/attendance/groups</button>
+          <button type="button" class="btn secondary" id="reportUsersBtn">GET /reports/attendance/users</button>
+        </div>
+        <div id="reportsContent"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+(function () {
+  "use strict";
+  var api = window.MaxRassApi;
+  var auth = window.MaxRassAuth;
+
+  auth.requireRoles(["teacher", "admin"], "/");
+  auth.applyUserToHeader();
+
+  var attendanceMarks = {};
+  var currentLessonId = null;
+
+  function toIsoLocal(value) {
+    if (!value) return null;
+    return new Date(value).toISOString();
+  }
+
+  function fromInputDateTime(value) {
+    if (!value) return undefined;
+    return new Date(value).toISOString();
+  }
+
+  async function loadStats() {
+    try {
+      var me = await api.get("/teacher/me");
+      var groups = await api.get("/teacher/groups");
+      var lessons = await api.get("/teacher/lessons");
+      document.getElementById("stats").innerHTML = [
+        ["Групп", groups.items.length],
+        ["Моих занятий", lessons.items.length],
+        ["Роль", me.profile && me.profile.role_name ? me.profile.role_name : "teacher"],
+      ].map(function (item) {
+        return '<div class="stat"><span>' + item[0] + '</span><strong>' + item[1] + '</strong></div>';
+      }).join("");
+    } catch (_err) {
+      document.getElementById("stats").innerHTML = "";
+    }
+  }
+
+  function renderGroups(items) {
+    if (!items.length) {
+      document.getElementById("groupsList").innerHTML = '<div class="empty">Нет доступных групп</div>';
+      return;
+    }
+    document.getElementById("groupsList").innerHTML = items.map(function (g) {
+      var members = (g.members || []).map(function (m) { return api.fmtName(m); }).join(", ") || "—";
+      return '<div class="card" style="padding:14px;margin-bottom:10px">' +
+        "<strong>" + api.escapeHtml(g.name) + "</strong> · " + g.status +
+        "<br><span style=\"color:var(--muted);font-size:13px\">Участников: " + g.member_count + "</span>" +
+        "<div style=\"font-size:12px;margin-top:8px\">" + api.escapeHtml(members) + "</div>" +
+        '<button class="btn small secondary" style="margin-top:8px" data-group="' + g.id + '">Использовать ID</button>' +
+        "<br><code style=\"font-size:11px\">" + g.id + "</code></div>";
+    }).join("");
+
+    document.querySelectorAll("[data-group]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        document.getElementById("clGroupId").value = btn.dataset.group;
+        api.showToast("toastSchedule", "ID группы подставлен");
+      });
+    });
+  }
+
+  async function loadGroups() {
+    var data = await api.get("/teacher/groups");
+    renderGroups(data.items);
+  }
+
+  function renderLessons(items) {
+    if (!items.length) {
+      document.getElementById("lessonsList").innerHTML = '<div class="empty">Нет занятий</div>';
+      return;
+    }
+    document.getElementById("lessonsList").innerHTML =
+      "<table><thead><tr><th>Группа</th><th>Преподаватель</th><th>Начало</th><th>Место</th><th>Тип</th><th></th></tr></thead><tbody>" +
+      items.map(function (l) {
+        return "<tr><td>" + api.escapeHtml(l.group_name) + "</td><td>" + api.escapeHtml(l.teacher_name || "—") +
+          "</td><td>" + api.fmtDate(l.starts_at) + "</td><td>" + (l.place || "—") +
+          "</td><td><span class=\"tag\">" + l.lesson_type + "</span></td>" +
+          '<td><button class="btn small secondary" data-lesson="' + l.id + '">Выбрать</button></td></tr>';
+      }).join("") + "</tbody></table>";
+
+    document.querySelectorAll("[data-lesson]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        document.getElementById("attLessonId").value = btn.dataset.lesson;
+        document.getElementById("ulLessonId").value = btn.dataset.lesson;
+        api.showToast("toastSchedule", "ID занятия подставлен");
+      });
+    });
+  }
+
+  async function loadLessons() {
+    var all = document.getElementById("allTeachers").checked;
+    var path = all ? "/teacher/lessons?all_teachers=true" : "/teacher/lessons";
+    var data = await api.get(path);
+    renderLessons(data.items);
+  }
+
+  function renderAttendance(items) {
+    attendanceMarks = {};
+    currentLessonId = document.getElementById("attLessonId").value.trim();
+    document.getElementById("saveAttendanceBtn").disabled = !items.length;
+
+    if (!items.length) {
+      document.getElementById("attendanceList").innerHTML = '<div class="empty">Нет участников</div>';
+      return;
+    }
+
+    document.getElementById("attendanceList").innerHTML = items.map(function (m) {
+      var status = m.attendance_status || "absent";
+      attendanceMarks[m.user_id] = status;
+      return '<div class="card" style="padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+        "<div><strong>" + api.escapeHtml(api.fmtName(m)) + "</strong></div>" +
+        '<div><select data-user="' + m.user_id + '">' +
+        ["present", "late", "absent"].map(function (s) {
+          return '<option value="' + s + '"' + (s === status ? " selected" : "") + ">" + s + "</option>";
+        }).join("") + "</select></div></div>";
+    }).join("");
+
+    document.querySelectorAll("#attendanceList select").forEach(function (sel) {
+      sel.addEventListener("change", function () {
+        attendanceMarks[sel.dataset.user] = sel.value;
+      });
+    });
+  }
+
+  async function loadAttendance() {
+    var lessonId = document.getElementById("attLessonId").value.trim();
+    if (!lessonId) {
+      api.showToast("toastAttendance", "Укажите ID занятия", true);
+      return;
+    }
+    var data = await api.get("/teacher/lessons/" + lessonId + "/attendance");
+    renderAttendance(data.items);
+  }
+
+  async function saveAttendance() {
+    if (!currentLessonId) return;
+    var marks = Object.keys(attendanceMarks).map(function (uid) {
+      return { user_id: uid, status: attendanceMarks[uid] };
+    });
+    try {
+      await api.post("/teacher/lessons/" + currentLessonId + "/attendance", { marks: marks });
+      api.showToast("toastAttendance", "Посещаемость сохранена");
+      loadAttendance();
+      loadStats();
+    } catch (err) {
+      api.showToast("toastAttendance", err.message, true);
+    }
+  }
+
+  async function loadReports(type) {
+    var groupId = document.getElementById("reportGroupId").value.trim();
+    var qs = groupId ? "?group_id=" + encodeURIComponent(groupId) : "";
+    var path = type === "groups" ? "/teacher/reports/attendance/groups" : "/teacher/reports/attendance/users";
+    var data = await api.get(path + qs);
+    var items = data.items;
+    if (!items.length) {
+      document.getElementById("reportsContent").innerHTML = '<div class="empty">Нет данных</div>';
+      return;
+    }
+    var headers = Object.keys(items[0]);
+    document.getElementById("reportsContent").innerHTML =
+      "<table><thead><tr>" + headers.map(function (h) { return "<th>" + h + "</th>"; }).join("") +
+      "</tr></thead><tbody>" + items.map(function (row) {
+        return "<tr>" + headers.map(function (h) { return "<td>" + (row[h] ?? "—") + "</td>"; }).join("") + "</tr>";
+      }).join("") + "</tbody></table>";
+  }
+
+  document.getElementById("tabs").addEventListener("click", function (e) {
+    var tab = e.target.closest(".tab");
+    if (!tab) return;
+    document.querySelectorAll(".tab").forEach(function (t) { t.classList.remove("active"); });
+    document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
+    tab.classList.add("active");
+    document.getElementById("panel-" + tab.dataset.tab).classList.add("active");
+  });
+
+  document.getElementById("seedBtn").addEventListener("click", async function () {
+    try {
+      await api.seedDemo();
+      api.showToast("toastSchedule", "Demo-данные загружены");
+      loadStats();
+      loadGroups();
+      loadLessons();
+    } catch (err) {
+      api.showToast("toastSchedule", err.message, true);
+    }
+  });
+
+  document.getElementById("refreshBtn").addEventListener("click", function () {
+    loadStats();
+    loadGroups();
+    loadLessons();
+  });
+
+  document.getElementById("loadGroupsBtn").addEventListener("click", function () {
+    loadGroups().catch(function (e) { api.showToast("toastSchedule", e.message, true); });
+  });
+  document.getElementById("loadLessonsBtn").addEventListener("click", function () {
+    loadLessons().catch(function (e) { api.showToast("toastSchedule", e.message, true); });
+  });
+  document.getElementById("loadAttendanceBtn").addEventListener("click", function () {
+    loadAttendance().catch(function (e) { api.showToast("toastAttendance", e.message, true); });
+  });
+  document.getElementById("saveAttendanceBtn").addEventListener("click", saveAttendance);
+  document.getElementById("reportGroupsBtn").addEventListener("click", function () {
+    loadReports("groups").catch(function (e) { api.showToast("toastSchedule", e.message, true); });
+  });
+  document.getElementById("reportUsersBtn").addEventListener("click", function () {
+    loadReports("users").catch(function (e) { api.showToast("toastSchedule", e.message, true); });
+  });
+
+  document.getElementById("createLessonForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var body = {
+        group_id: document.getElementById("clGroupId").value.trim(),
+        starts_at: fromInputDateTime(document.getElementById("clStart").value),
+        ends_at: fromInputDateTime(document.getElementById("clEnd").value),
+        place: document.getElementById("clPlace").value.trim() || null,
+        lesson_type: document.getElementById("clType").value,
+      };
+      var tid = document.getElementById("clTeacherId").value.trim();
+      if (tid) body.teacher_id = tid;
+      await api.post("/teacher/lessons", body);
+      api.showToast("toastSchedule", "Занятие создано");
+      e.target.reset();
+      loadLessons();
+      loadStats();
+    } catch (err) {
+      api.showToast("toastSchedule", err.message, true);
+    }
+  });
+
+  document.getElementById("updateLessonForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var id = document.getElementById("ulLessonId").value.trim();
+      var body = {};
+      var start = fromInputDateTime(document.getElementById("ulStart").value);
+      var end = fromInputDateTime(document.getElementById("ulEnd").value);
+      var place = document.getElementById("ulPlace").value.trim();
+      var tid = document.getElementById("ulTeacherId").value.trim();
+      if (start) body.starts_at = start;
+      if (end) body.ends_at = end;
+      if (place) body.place = place;
+      if (tid) body.teacher_id = tid;
+      await api.patch("/teacher/lessons/" + id, body);
+      api.showToast("toastSchedule", "Занятие обновлено");
+      loadLessons();
+    } catch (err) {
+      api.showToast("toastSchedule", err.message, true);
+    }
+  });
+
+  loadStats();
+  loadGroups().catch(function () {});
+  loadLessons().catch(function () {});
+})();
+  </script>
+</body>
+</html>
