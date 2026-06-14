@@ -75,3 +75,7 @@ async def notify_appeal_resolved(
             "Страйк остаётся активным."
         )
     return await notify_max_user(user_id, text)
+
+
+async def notify_lesson_reminder(user_id: str, text: str) -> bool:
+    return await notify_max_user(user_id, text)

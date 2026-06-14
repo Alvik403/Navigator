@@ -36,6 +36,7 @@ from db import (
     run_readonly_query,
     seed_demo_data,
 )
+from lesson_reminder_worker import LESSON_REMINDER_ENABLED, run_lesson_reminder_worker
 from max_client import (
     MAX_BOT_API_URL,
     answer_max_callback,
@@ -661,6 +662,11 @@ async def startup() -> None:
     else:
         logger.warning("MAX_BOT_TOKEN is empty — bot messages disabled")
 
+    if LESSON_REMINDER_ENABLED:
+        asyncio.create_task(run_lesson_reminder_worker())
+    else:
+        logger.info("Lesson reminder worker disabled (LESSON_REMINDER_ENABLED=false)")
+
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
@@ -698,6 +704,13 @@ async def query_db(body: DbQueryRequest) -> dict[str, Any]:
 @app.post("/api/v1/db/seed-demo")
 async def seed_db_demo() -> dict[str, Any]:
     return {"status": "ok", "result": await seed_demo_data()}
+
+
+@app.post("/api/v1/db/lesson-reminders/run")
+async def run_lesson_reminders_now() -> dict[str, Any]:
+    from lesson_reminder_worker import process_lesson_reminders
+
+    return {"status": "ok", "result": await process_lesson_reminders()}
 
 
 @app.get("/api/v1/auth/me")

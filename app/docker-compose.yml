@@ -78,6 +78,10 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       DATABASE_URL: postgresql://max_rass:max_rass@app-postgres:5432/max_rass
+      APP_TIMEZONE: Europe/Moscow
+      LESSON_REMINDER_POLL_SEC: "60"
+      LESSON_REMINDER_WINDOW_MIN: "2"
+      LESSON_REMINDER_ENABLED: "true"
     ports:
       - "8025:8025"
     healthcheck:
