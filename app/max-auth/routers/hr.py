@@ -18,6 +18,7 @@ from domain import (
     create_lesson,
     create_smu_pattern,
     create_strike,
+    create_staff_remark,
     clear_smu_pattern_overrides,
     delete_smu_pattern,
     create_track,
@@ -37,6 +38,7 @@ from domain import (
     list_smu_pattern_overrides,
     list_smu_patterns,
     list_strikes,
+    list_staff_remarks,
     list_track_assignments,
     list_tracks,
     list_user_attendance_issues,
@@ -447,6 +449,10 @@ class UserStrikeBody(BaseModel):
     reason: str = Field(min_length=1, default="manual")
 
 
+class StaffRemarkBody(BaseModel):
+    text: str = Field(min_length=3)
+
+
 @router.post("/users/{user_id}/strikes")
 async def hr_add_user_strike(
     user_id: str,
@@ -471,6 +477,30 @@ async def hr_revoke_user_strike(
             user_id,
             resolved_by=user.app_user_id or "",
             comment=body.comment,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.get("/users/{user_id}/remarks")
+async def hr_list_user_remarks(
+    user_id: str,
+    user: AuthUser = Depends(require_hr),
+) -> dict[str, Any]:
+    return {"items": await list_staff_remarks(user_id)}
+
+
+@router.post("/users/{user_id}/remarks")
+async def hr_create_user_remark(
+    user_id: str,
+    body: StaffRemarkBody,
+    user: AuthUser = Depends(require_hr),
+) -> dict[str, Any]:
+    try:
+        return await create_staff_remark(
+            user_id,
+            body.text,
+            issued_by=user.app_user_id or "",
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

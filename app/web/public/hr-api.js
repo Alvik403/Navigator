@@ -450,6 +450,24 @@
     return api.post("/hr/appeals/" + strikeId + "/resolve", { approved: approved });
   }
 
+  async function listStaffRemarks(userId) {
+    var res = await api.get("/hr/users/" + userId + "/remarks");
+    return (res.items || []).map(function (row) {
+      return {
+        id: row.id,
+        user_id: row.user_id,
+        text: row.text,
+        issued_by: row.issued_by,
+        created_at: row.created_at,
+        issuer_name: [row.issuer_last_name, row.issuer_first_name].filter(Boolean).join(" "),
+      };
+    });
+  }
+
+  async function addStaffRemark(userId, text) {
+    return api.post("/hr/users/" + userId + "/remarks", { text: text });
+  }
+
   async function patchUserStatus(userId, status, banReason) {
     var body = { status: status };
     if (status === "inactive" && banReason) body.ban_reason = banReason;
@@ -705,6 +723,10 @@
     return syncInstructorTracks(teacherId, ids);
   }
 
+  function getConveyorSlots() {
+    return store.conveyorSlots.slice();
+  }
+
   global.HrApi = {
     bootstrap: bootstrap,
     refresh: refresh,
@@ -714,6 +736,8 @@
     addStrike: addStrike,
     revokeStrike: revokeStrike,
     resolveAppeal: resolveAppeal,
+    listStaffRemarks: listStaffRemarks,
+    addStaffRemark: addStaffRemark,
     patchUserStatus: patchUserStatus,
     listLessons: listLessons,
     createLesson: createLesson,
@@ -753,5 +777,6 @@
     removeInstructorFromTrack: removeInstructorFromTrack,
     parseFio: parseFio,
     apiRoleCode: apiRoleCode,
+    getConveyorSlots: getConveyorSlots,
   };
 })(window);

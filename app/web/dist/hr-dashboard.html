@@ -191,6 +191,7 @@
   let D;
   try {
     D = await HrApi.bootstrap();
+    window.D = D;
   } catch (err) {
     if (window.MaxRassAuth && MaxRassAuth.isAuthErrorMessage(err && err.message)) {
       MaxRassAuth.redirectToLogin("/hr-dashboard.html");
@@ -255,6 +256,7 @@
       timeEnd: end ? end.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "",
       startsAt: l.starts_at,
       endsAt: l.ends_at,
+      lesson_type: l.lesson_type,
       track_name: l.track_name,
       teacher_name: l.teacher_name,
     };
@@ -262,6 +264,7 @@
 
   async function reloadData() {
     D = await HrApi.refresh();
+    window.D = D;
     hr = D.userById(D.session.hrId);
   }
   const $ = (s) => document.querySelector(s);
@@ -331,10 +334,13 @@
       curators: { status: "", wards: "" },
       smu: { status: "" },
       attendance: { track: "" },
-      lessons: { track: "" },
+      lessons: { track: "", type: "" },
       strikes: { status: "" },
       notifications: { category: "" },
     },
+    scheduleView: "list",
+    studentsListUi: { trackOn: false, statusOn: false, curatorOn: false, strikeOn: false },
+    teachersListUi: { statusOn: false, tracksOn: false },
     notifRead: JSON.parse(localStorage.getItem("hrNotifRead") || "{}"),
     attTrackExpanded: {},
     modalKey: null,
@@ -398,6 +404,7 @@
     formationSettingsTrackId: null,
     selectedCuratorId: null,
     curatorWardDraft: {},
+    staffRemarks: {},
     selectedInstructorId: null,
     instructorTrackDraft: {},
     formationPresetTrack: null,
@@ -636,16 +643,17 @@
   function filterStudents() {
     const q = (state.search.students || "").toLowerCase();
     const f = state.filters.students;
+    const ui = state.studentsListUi;
     return D.usersByRole("student").filter(u => {
-      if (f.status && u.status !== f.status) return false;
-      if (f.strike && studentStrikeFilterKey(u) !== f.strike) return false;
-      if (f.track) {
+      if (ui.statusOn && f.status && u.status !== f.status) return false;
+      if (ui.strikeOn && f.strike && studentStrikeFilterKey(u) !== f.strike) return false;
+      if (ui.trackOn && f.track) {
         const tracks = D.studentTracks?.(u.id) || [];
         if (f.track === "__none__" && tracks.length) return false;
         if (f.track !== "__none__" && !tracks.some(t => String(t.id) === f.track)) return false;
       }
-      if (f.curator === "__none__" && u.id_curator) return false;
-      if (f.curator === "__has__" && !u.id_curator) return false;
+      if (ui.curatorOn && f.curator === "__none__" && u.id_curator) return false;
+      if (ui.curatorOn && f.curator === "__has__" && !u.id_curator) return false;
       const trackNames = (D.studentTracks?.(u.id) || []).map(t => t.name).join(" ");
       const hay = [D.fullName(u), u.phone, u.id_max, trackNames, D.fullName(D.userById(u.id_curator))].join(" ").toLowerCase();
       return !q || hay.includes(q);
@@ -671,6 +679,104 @@
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   }
 
+  function userAppeals(userId) {
+    return studentStrikes(userId).filter(s => s.status === "appealed");
+  }
+
+  async function ensureStaffRemarks(userId) {
+    if (state.staffRemarks[userId]) return state.staffRemarks[userId];
+    try {
+      state.staffRemarks[userId] = await HrApi.listStaffRemarks(userId);
+    } catch {
+      state.staffRemarks[userId] = [];
+    }
+    return state.staffRemarks[userId];
+  }
+
+  function invalidateStaffRemarks(userId) {
+    delete state.staffRemarks[userId];
+  }
+
+  function staffDisciplineHtml(userId) {
+    const u = D.userById(userId);
+    if (!u) return "";
+    const strikes = u.strikes || 0;
+    const sc = strikes >= 2 ? "red" : strikes ? "yellow" : "gray";
+    const appeals = userAppeals(userId);
+    const remarks = state.staffRemarks[userId] || [];
+    const appealsHtml = appeals.length ? `<div class="staff-appeals-inline">
+      <h5>Апелляции по страйкам</h5>
+      ${appeals.map(a => `<div class="staff-appeal-row">
+        <span class="tag yellow">${a.strike_number}/3</span>
+        <span>${a.reason || "—"}</span>
+        <span class="stat-mini">${a.appeal_reason || "—"}</span>
+        <button type="button" class="btn small" data-appeal-approve="${a.id}">${I("check")}Снять</button>
+        <button type="button" class="btn small danger" data-appeal-reject="${a.id}">${I("x")}Отклонить</button>
+      </div>`).join("")}
+    </div>` : "";
+    const remarksHtml = remarks.length
+      ? remarks.map(r => `<div class="staff-remark-item">
+          <div class="staff-remark-text">${escapeHtml(r.text)}</div>
+          <div class="staff-remark-meta">${fmtStrikeDate(r.created_at)}${r.issuer_name ? " · " + escapeHtml(r.issuer_name) : ""}</div>
+        </div>`).join("")
+      : `<div class="empty" style="padding:8px 0">Замечаний пока нет</div>`;
+    return `<div class="staff-discipline-block">
+      <h4>Страйки и замечания</h4>
+      <div class="staff-discipline-head">
+        <div class="strike-cell">
+          <button type="button" class="btn small secondary icon-only strike-btn" data-strike-minus="${userId}" ${strikes <= 0 ? "disabled" : ""} aria-label="Снять страйк" title="Снять страйк">${I("minus")}</button>
+          <span class="tag ${sc} strike-count-tag" data-strike-history="${userId}" title="История страйков">${strikes}/3</span>
+          <button type="button" class="btn small danger icon-only strike-btn" data-strike-plus="${userId}" ${strikes >= 3 ? "disabled" : ""} aria-label="Выдать страйк" title="Выдать страйк">${I("plus")}</button>
+          <button type="button" class="btn small secondary icon-only strike-btn" data-strike-history="${userId}" aria-label="История страйков" title="История страйков">${I("clock")}</button>
+        </div>
+        <button type="button" class="btn small secondary" data-remark-add="${userId}">${I("pencil")}Выписать замечание</button>
+      </div>
+      <div class="staff-remarks-list">${remarksHtml}</div>
+      ${appealsHtml}
+    </div>`;
+  }
+
+  function bindStaffDiscipline(host, userId, rerender) {
+    if (!host) return;
+    host.querySelectorAll("[data-strike-plus]").forEach(btn => btn.onclick = () => openStrikeCommentModal(btn.dataset.strikePlus, "add"));
+    host.querySelectorAll("[data-strike-minus]").forEach(btn => btn.onclick = () => openStrikeCommentModal(btn.dataset.strikeMinus, "revoke"));
+    host.querySelectorAll("[data-strike-history]").forEach(btn => btn.onclick = () => openStrikeHistory(btn.dataset.strikeHistory));
+    host.querySelectorAll("[data-remark-add]").forEach(btn => btn.onclick = () => openRemarkModal(btn.dataset.remarkAdd));
+    host.querySelectorAll("[data-appeal-approve]").forEach(btn => btn.onclick = () => resolveStaffAppeal(btn.dataset.appealApprove, true, userId, rerender));
+    host.querySelectorAll("[data-appeal-reject]").forEach(btn => btn.onclick = () => resolveStaffAppeal(btn.dataset.appealReject, false, userId, rerender));
+  }
+
+  async function resolveStaffAppeal(strikeId, approved, userId, rerender) {
+    try {
+      await HrApi.resolveAppeal(strikeId, approved);
+      await reloadData();
+      invalidateStaffRemarks(userId);
+      showToast(approved ? "Апелляция одобрена, страйк снят" : "Апелляция отклонена", approved ? "success" : "info");
+      if (rerender) await rerender();
+      renderStrikes();
+    } catch (err) {
+      showToast(err.message || "Ошибка рассмотрения", "error");
+    }
+  }
+
+  function openRemarkModal(userId) {
+    const u = D.userById(userId);
+    state.banModal = { userId, mode: "remark_add", revertOnCancel: false };
+    $("#banReasonTitle").textContent = "Замечание";
+    $("#banReasonSubtitle").textContent = u ? D.fullName(u) : "";
+    $("#banReasonLabel").textContent = "Текст замечания";
+    $("#banReasonInput").value = "";
+    $("#banReasonInput").placeholder = "Опишите нарушение или замечание";
+    setBanReasonHint("Замечание будет видно HR в карточке сотрудника.");
+    const saveBtn = $("#banReasonSaveBtn");
+    if (saveBtn) {
+      saveBtn.textContent = "Сохранить замечание";
+      saveBtn.className = "btn";
+    }
+    $("#banReasonOverlay").classList.add("open");
+    setTimeout(() => $("#banReasonInput")?.focus(), 0);
+  }
+
   function openStrikeHistory(userId) {
     const u = D.userById(userId);
     const list = studentStrikes(userId);
@@ -678,7 +784,7 @@
     $("#strikeHistorySubtitle").textContent = u ? `${D.fullName(u)} · активных: ${u.strikes}/3` : "";
     const body = $("#strikeHistoryBody");
     if (!list.length) {
-      body.innerHTML = '<div class="empty">У ученика пока нет страйков</div>';
+      body.innerHTML = '<div class="empty">Страйков пока нет</div>';
     } else {
       body.innerHTML = `<div class="table-wrap"><table class="entity-table strike-history-table"><thead><tr>
         <th>№</th><th>Статус</th><th>Причина</th><th>Трек</th><th>Дата</th><th>Апелляция / вердикт</th>
@@ -800,6 +906,8 @@
         const u = D.userById(m.userId);
         showToast(`Страйк выдан · ${D.fullName(u)}: ${u.strikes}/3`, "warning");
         renderStudents();
+        renderCurators();
+        renderTeachers();
       } catch (err) {
         showToast(err.message || "Ошибка страйка", "error");
       }
@@ -814,8 +922,24 @@
         const u = D.userById(m.userId);
         showToast(`Страйк снят · ${D.fullName(u)}: ${u.strikes}/3`, "info");
         renderStudents();
+        renderCurators();
+        renderTeachers();
       } catch (err) {
         showToast(err.message || "Ошибка снятия страйка", "error");
+      }
+      return;
+    }
+    if (m.mode === "remark_add") {
+      if (!text || text.length < 3) return showToast("Укажите текст замечания (минимум 3 символа)", "warning");
+      try {
+        await HrApi.addStaffRemark(m.userId, text);
+        invalidateStaffRemarks(m.userId);
+        closeBanReasonModal(false);
+        showToast("Замечание сохранено", "success");
+        renderCurators();
+        renderTeachers();
+      } catch (err) {
+        showToast(err.message || "Ошибка сохранения замечания", "error");
       }
       return;
     }
@@ -904,56 +1028,214 @@
       </tbody></table></div>` : `<div class="empty">Ничего не найдено</div>`}
       ${paginationHtml(list.length, state.pages.students, "students")}`;
     bindStudentsRowActions(panel, slice);
+    updateStudentFilterCount();
   }
 
   function renderStudents(refreshShell = false) {
     const panel = $("#panel-students");
     if (refreshShell || !panel.querySelector("#studentsListHost")) {
       destroyCmps(tableSelectCmps);
+      destroyStudentFilterCmps();
+      const ui = state.studentsListUi;
+      const f = state.filters.students;
       panel.innerHTML = `<div class="card"><h2>Ученики</h2>
-      <div class="toolbar">
-        <input type="search" id="searchStudents" placeholder="Поиск по ФИО, телефону, MAX" value="${state.search.students || ""}">
-        <div id="filterStTrack"></div>
-        <div id="filterStStatus"></div>
-        <div id="filterStCurator"></div>
-        <div id="filterStStrike"></div>
-        <button type="button" class="btn" id="addStudentsBtn">${I("user-plus")}Добавить учеников</button>
-        <button type="button" class="btn secondary" id="exportStudents">${I("download")}Экспорт</button>
+      <div class="people-panel-head">
+        ${studentFiltersBarHtml(ui, f)}
+        <div class="people-panel-actions">
+          <button type="button" class="btn" id="addStudentsBtn">${I("user-plus")}Добавить учеников</button>
+          <button type="button" class="btn secondary" id="exportStudents">${I("download")}Экспорт</button>
+        </div>
       </div>
       <div id="studentsListHost"></div>
     </div>`;
-      mountToolbarFilters("students");
+      bindStudentsFilterBar();
       $("#addStudentsBtn").onclick = () => openModal("students");
       $("#exportStudents").onclick = () => exportUsers("students");
     }
     renderStudentsBody();
   }
 
-  function mountToolbarFilters(tab) {
-    if (tab === "students") {
-      const trackOpts = [{ value: "", label: "Все треки" }, { value: "__none__", label: "Без трека" }, ...(D.tracks?.() || []).map(t => ({ value: String(t.id), label: t.name }))];
-      const statusOpts = [{ value: "", label: "Все статусы" }, { value: "active", label: "Активен" }, { value: "inactive", label: "Не активен" }];
-      const strikeOpts = [
-        { value: "", label: "Все страйки" },
-        { value: "none", label: "Без страйков" },
-        { value: "active", label: "Есть страйки" },
-        { value: "appealed", label: "Апелляция" },
-        { value: "max", label: "3 страйка" },
-      ];
-      filterCmps.stTrack?.destroy?.();
-      filterCmps.stStatus?.destroy?.();
-      filterCmps.stCurator?.destroy?.();
-      filterCmps.stStrike?.destroy?.();
-      filterCmps.stTrack = UI.createSelect($("#filterStTrack"), { label: "", options: trackOpts, value: state.filters.students.track, onChange: v => { state.filters.students.track = v; state.pages.students = 1; renderStudentsBody(); } });
-      filterCmps.stStatus = UI.createSelect($("#filterStStatus"), { label: "", options: statusOpts, value: state.filters.students.status, onChange: v => { state.filters.students.status = v; state.pages.students = 1; renderStudentsBody(); } });
-      const curatorFilterOpts = [
-        { value: "", label: "Все кураторы" },
-        { value: "__none__", label: "Без куратора" },
-        { value: "__has__", label: "С куратором" },
-      ];
-      filterCmps.stCurator = UI.createSelect($("#filterStCurator"), { label: "", options: curatorFilterOpts, value: state.filters.students.curator, onChange: v => { state.filters.students.curator = v; state.pages.students = 1; renderStudentsBody(); } });
-      filterCmps.stStrike = UI.createSelect($("#filterStStrike"), { label: "", options: strikeOpts, value: state.filters.students.strike, onChange: v => { state.filters.students.strike = v; state.pages.students = 1; renderStudentsBody(); } });
+  function studentFilterActiveCount(ui, f) {
+    let n = 0;
+    if (ui.trackOn && f.track) n++;
+    if (ui.statusOn && f.status) n++;
+    if (ui.curatorOn && f.curator) n++;
+    if (ui.strikeOn && f.strike) n++;
+    return n;
+  }
+
+  function studentTrackFilterLabel(trackId) {
+    if (trackId === "__none__") return "Без трека";
+    const t = (D.tracks?.() || []).find(x => String(x.id) === String(trackId));
+    return t?.name || trackId;
+  }
+
+  function studentStrikeFilterLabel(v) {
+    return { none: "Без страйков", active: "Есть страйки", appealed: "Апелляция", max: "3 страйка" }[v] || v;
+  }
+
+  function studentCuratorFilterLabel(v) {
+    return { __none__: "Без куратора", __has__: "С куратором" }[v] || v;
+  }
+
+  function studentFilterChipsHtml(ui, f) {
+    const chips = [];
+    if (ui.trackOn && f.track) chips.push({ key: "track", label: `Трек: ${studentTrackFilterLabel(f.track)}` });
+    if (ui.statusOn && f.status) chips.push({ key: "status", label: `Статус: ${D.statusLabel[f.status] || f.status}` });
+    if (ui.curatorOn && f.curator) chips.push({ key: "curator", label: studentCuratorFilterLabel(f.curator) });
+    if (ui.strikeOn && f.strike) chips.push({ key: "strike", label: `Страйки: ${studentStrikeFilterLabel(f.strike)}` });
+    if (!chips.length) return "";
+    return `<div class="smu-filter-chips" id="studentFilterChips">${chips.map(c =>
+      `<span class="smu-filter-chip">${c.label}<button type="button" data-clear-student-filter="${c.key}" aria-label="Убрать">×</button></span>`
+    ).join("")}</div>`;
+  }
+
+  function studentFiltersBarHtml(ui, f) {
+    const count = studentFilterActiveCount(ui, f);
+    return `<div class="smu-roster-filters people-list-filters" id="studentsFiltersBar">
+      <input type="search" class="cell-input smu-search-input" id="searchStudents" placeholder="Поиск по ФИО, телефону, MAX, треку" value="${state.search.students || ""}" autocomplete="off">
+      <div class="smu-filter-dropdown" id="studentFilterDropdown">
+        <button type="button" class="btn small secondary smu-filter-trigger" id="studentFilterBtn">
+          ${I("layers")}Фильтры
+          <span class="smu-filter-badge" data-count="${count}">${count || ""}</span>
+        </button>
+        <div class="smu-filter-menu" id="studentFilterMenu" hidden>
+          <div class="smu-filter-menu-item">
+            <label class="smu-filter-check-row"><input type="checkbox" id="studentFilterTrackOn"${ui.trackOn ? " checked" : ""}> Трек</label>
+            <div class="smu-filter-nested" id="studentFilterTrackNested"${ui.trackOn ? "" : " hidden"}><div id="studentFilterTrackWrap"></div></div>
+          </div>
+          <div class="smu-filter-menu-item">
+            <label class="smu-filter-check-row"><input type="checkbox" id="studentFilterStatusOn"${ui.statusOn ? " checked" : ""}> Статус</label>
+            <div class="smu-filter-nested" id="studentFilterStatusNested"${ui.statusOn ? "" : " hidden"}><div id="studentFilterStatusWrap"></div></div>
+          </div>
+          <div class="smu-filter-menu-item">
+            <label class="smu-filter-check-row"><input type="checkbox" id="studentFilterCuratorOn"${ui.curatorOn ? " checked" : ""}> Куратор</label>
+            <div class="smu-filter-nested" id="studentFilterCuratorNested"${ui.curatorOn ? "" : " hidden"}><div id="studentFilterCuratorWrap"></div></div>
+          </div>
+          <div class="smu-filter-menu-item">
+            <label class="smu-filter-check-row"><input type="checkbox" id="studentFilterStrikeOn"${ui.strikeOn ? " checked" : ""}> Страйки</label>
+            <div class="smu-filter-nested" id="studentFilterStrikeNested"${ui.strikeOn ? "" : " hidden"}><div id="studentFilterStrikeWrap"></div></div>
+          </div>
+          <div class="smu-filter-menu-foot">
+            <button type="button" class="btn small secondary" id="studentFilterReset">Сбросить</button>
+            <button type="button" class="btn small" id="studentFilterClose">Готово</button>
+          </div>
+        </div>
+      </div>
+      ${studentFilterChipsHtml(ui, f)}
+      <span class="people-filter-count" id="studentFilterCount"></span>
+    </div>`;
+  }
+
+  function destroyStudentFilterCmps() {
+    ["stTrack", "stStatus", "stCurator", "stStrike"].forEach(k => {
+      filterCmps[k]?.destroy?.();
+      delete filterCmps[k];
+    });
+  }
+
+  function mountStudentFilterSelects(f, ui, onChange) {
+    destroyStudentFilterCmps();
+    const trackOpts = [{ value: "", label: "— выберите —" }, { value: "__none__", label: "Без трека" }, ...(D.tracks?.() || []).map(t => ({ value: String(t.id), label: t.name }))];
+    const statusOpts = [{ value: "", label: "— выберите —" }, { value: "active", label: "Активен" }, { value: "inactive", label: "Не активен" }];
+    const curatorOpts = [{ value: "", label: "— выберите —" }, { value: "__none__", label: "Без куратора" }, { value: "__has__", label: "С куратором" }];
+    const strikeOpts = [
+      { value: "", label: "— выберите —" },
+      { value: "none", label: "Без страйков" },
+      { value: "active", label: "Есть страйки" },
+      { value: "appealed", label: "Апелляция" },
+      { value: "max", label: "3 страйка" },
+    ];
+    filterCmps.stTrack = UI.createSelect($("#studentFilterTrackWrap"), { label: "", options: trackOpts, value: f.track, onChange: v => { f.track = v; onChange(); } });
+    filterCmps.stStatus = UI.createSelect($("#studentFilterStatusWrap"), { label: "", options: statusOpts, value: f.status, onChange: v => { f.status = v; onChange(); } });
+    filterCmps.stCurator = UI.createSelect($("#studentFilterCuratorWrap"), { label: "", options: curatorOpts, value: f.curator, onChange: v => { f.curator = v; onChange(); } });
+    filterCmps.stStrike = UI.createSelect($("#studentFilterStrikeWrap"), { label: "", options: strikeOpts, value: f.strike, onChange: v => { f.strike = v; onChange(); } });
+  }
+
+  function refreshStudentsFilterBar() {
+    const ui = state.studentsListUi;
+    const f = state.filters.students;
+    const bar = $("#studentsFiltersBar");
+    if (!bar) return;
+    state.search.students = $("#searchStudents")?.value || state.search.students || "";
+    const menuOpen = !$("#studentFilterMenu")?.hidden;
+    bar.outerHTML = studentFiltersBarHtml(ui, f);
+    bindStudentsFilterBar();
+    if (menuOpen) {
+      const menu = $("#studentFilterMenu");
+      if (menu) menu.hidden = false;
     }
+    updateStudentFilterCount();
+  }
+
+  function updateStudentFilterCount() {
+    const el = $("#studentFilterCount");
+    if (el) el.textContent = `${filterStudents().length} из ${D.usersByRole("student").length}`;
+  }
+
+  function bindStudentsFilterBar() {
+    const ui = state.studentsListUi;
+    const f = state.filters.students;
+    const rerender = () => { state.pages.students = 1; renderStudentsBody(); updateStudentFilterCount(); };
+    const syncBar = () => refreshStudentsFilterBar();
+    ensurePanelDropdownDocClose();
+
+    $("#searchStudents")?.addEventListener("input", e => { state.search.students = e.target.value; rerender(); });
+
+    const menu = $("#studentFilterMenu");
+    const btn = $("#studentFilterBtn");
+    const dropdown = $("#studentFilterDropdown");
+    btn?.addEventListener("click", e => {
+      e.stopPropagation();
+      const willOpen = menu?.hidden;
+      document.querySelectorAll(".smu-filter-menu, .smu-assign-menu").forEach(m => { m.hidden = true; });
+      if (willOpen && menu) menu.hidden = false;
+    });
+    menu?.addEventListener("click", e => e.stopPropagation());
+    dropdown?.addEventListener("click", e => e.stopPropagation());
+
+    mountStudentFilterSelects(f, ui, () => { syncBar(); rerender(); });
+
+    const bindNested = (checkId, nestedId, onKey, valueKey, cmpKey) => {
+      const check = $(checkId);
+      const nested = $(nestedId);
+      if (!check || !nested) return;
+      check.onchange = () => {
+        ui[onKey] = check.checked;
+        nested.hidden = !check.checked;
+        if (!check.checked) {
+          f[valueKey] = "";
+          filterCmps[cmpKey]?.setValue?.("");
+        }
+        syncBar(); rerender();
+      };
+    };
+    bindNested("#studentFilterTrackOn", "#studentFilterTrackNested", "trackOn", "track", "stTrack");
+    bindNested("#studentFilterStatusOn", "#studentFilterStatusNested", "statusOn", "status", "stStatus");
+    bindNested("#studentFilterCuratorOn", "#studentFilterCuratorNested", "curatorOn", "curator", "stCurator");
+    bindNested("#studentFilterStrikeOn", "#studentFilterStrikeNested", "strikeOn", "strike", "stStrike");
+
+    $("#studentFilterReset")?.addEventListener("click", () => {
+      ui.trackOn = false; ui.statusOn = false; ui.curatorOn = false; ui.strikeOn = false;
+      f.track = ""; f.status = ""; f.curator = ""; f.strike = "";
+      syncBar(); rerender();
+    });
+    $("#studentFilterClose")?.addEventListener("click", () => { if (menu) menu.hidden = true; });
+
+    document.querySelectorAll("[data-clear-student-filter]").forEach(chipBtn => {
+      chipBtn.onclick = () => {
+        const key = chipBtn.dataset.clearStudentFilter;
+        if (key === "track") { ui.trackOn = false; f.track = ""; }
+        if (key === "status") { ui.statusOn = false; f.status = ""; }
+        if (key === "curator") { ui.curatorOn = false; f.curator = ""; }
+        if (key === "strike") { ui.strikeOn = false; f.strike = ""; }
+        syncBar(); rerender();
+      };
+    });
+  }
+
+  function mountToolbarFilters(tab) {
+    if (tab === "students") return;
     if (tab === "attendance" && $("#filterAttTrack")) {
       const trackOpts = [{ value: "", label: "Все треки" }, ...(D.tracks?.() || []).filter(t => t.status !== "inactive").map(t => ({ value: String(t.id), label: t.name }))];
       filterCmps.attTrack?.destroy?.();
@@ -979,8 +1261,6 @@
 
   function onPanelSearchInput(e) {
     const handlers = {
-      searchStudents: ["students", "students", renderStudentsBody],
-      searchTeachers: ["teachers", "teachers", renderTeachersBody],
       searchCurators: ["curators", "curators", renderCuratorsBody],
       searchAttendance: ["attendance", "attendance", renderAttendanceBody],
       searchStrikes: ["strikes", "strikes", renderStrikesBody],
@@ -1010,11 +1290,12 @@
   function filterTeachers() {
     const q = (state.search.teachers || "").toLowerCase();
     const f = state.filters.teachers;
+    const ui = state.teachersListUi;
     return D.usersByRole("teacher").filter(t => {
-      if (f.status && t.status !== f.status) return false;
+      if (ui.statusOn && f.status && t.status !== f.status) return false;
       const trackN = instructorTrackCount(t.id);
-      if (f.tracks === "has" && trackN === 0) return false;
-      if (f.tracks === "none" && trackN > 0) return false;
+      if (ui.tracksOn && f.tracks === "has" && trackN === 0) return false;
+      if (ui.tracksOn && f.tracks === "none" && trackN > 0) return false;
       const trackNames = instructorTrackNames(t.id);
       const hay = [D.fullName(t), t.phone, t.id_max, ...trackNames].join(" ").toLowerCase();
       return !q || hay.includes(q);
@@ -1184,8 +1465,9 @@
       host.innerHTML = `<div class="empty">Выберите инструктора слева или добавьте нового</div>`;
       return;
     }
-    host.innerHTML = `<p class="hint">Загрузка треков…</p>`;
+    host.innerHTML = `<p class="hint">Загрузка…</p>`;
     await ensureInstructorDraft(t.id);
+    await ensureStaffRemarks(t.id);
     const draft = state.instructorTrackDraft[t.id];
     const summary = instructorSummary(t.id);
     const lessons = instructorUpcomingLessons(t.id);
@@ -1207,6 +1489,7 @@
         <span class="stat-chip">Ближайших занятий: ${summary.lessons}</span>
         <span class="stat-chip">Страйки: ${summary.strikes}/3</span>
       </div>
+      ${staffDisciplineHtml(t.id)}
       <div class="instructor-tracks-block">
         <div class="instructor-tracks-head">
           <div>
@@ -1239,6 +1522,7 @@
       switchTab("formation");
     };
     $("#instructorSaveTracksBtn").onclick = () => saveInstructorTracks(t.id);
+    bindStaffDiscipline(host, t.id, renderInstructorDetail);
     renderInstructorTrackLists(t.id);
   }
 
@@ -1266,35 +1550,174 @@
     const panel = $("#panel-teachers");
     pickDefaultInstructor();
     if (refreshShell || !panel.querySelector("#instructorSidebarList")) {
+      destroyTeacherFilterCmps();
+      const ui = state.teachersListUi;
+      const f = state.filters.teachers;
       panel.innerHTML = `<div class="card"><h2>Инструкторы</h2>
       <p class="stat-mini" style="margin:0 0 14px">Преподаватели закрепляются за треками (направлениями). Через треки они попадают в формирование занятий.</p>
-      <div class="toolbar">
-        <input type="search" id="searchTeachers" placeholder="Поиск по ФИО, телефону, трекам" value="${state.search.teachers || ""}">
-        <div id="filterTchStatus"></div>
-        <div id="filterTchTracks"></div>
-        <button type="button" class="btn" id="addTeachersBtn">${I("user-plus")}Добавить инструкторов</button>
-        <button type="button" class="btn secondary" id="exportTeachers">${I("download")}Экспорт</button>
+      <div class="people-panel-head">
+        ${teacherFiltersBarHtml(ui, f)}
+        <div class="people-panel-actions">
+          <button type="button" class="btn" id="addTeachersBtn">${I("user-plus")}Добавить инструкторов</button>
+          <button type="button" class="btn secondary" id="exportTeachers">${I("download")}Экспорт</button>
+        </div>
       </div>
       <div class="instructor-layout">
         <div class="instructor-sidebar" id="instructorSidebarList"></div>
         <div id="instructorDetailHost"><div class="empty">Выберите инструктора</div></div>
       </div></div>`;
-      const tchStatusOpts = [{ value: "", label: "Все статусы" }, { value: "active", label: "Активен" }, { value: "inactive", label: "Не активен" }];
-      const tchTrackOpts = [{ value: "", label: "Все" }, { value: "has", label: "Есть треки" }, { value: "none", label: "Без треков" }];
-      filterCmps.tchStatus?.destroy?.();
-      filterCmps.tchTracks?.destroy?.();
-      filterCmps.tchStatus = UI.createSelect($("#filterTchStatus"), {
-        label: "", options: tchStatusOpts, value: state.filters.teachers.status,
-        onChange: v => { state.filters.teachers.status = v; pickDefaultInstructor(); renderTeachersBody(); }
-      });
-      filterCmps.tchTracks = UI.createSelect($("#filterTchTracks"), {
-        label: "", options: tchTrackOpts, value: state.filters.teachers.tracks,
-        onChange: v => { state.filters.teachers.tracks = v; pickDefaultInstructor(); renderTeachersBody(); }
-      });
+      bindTeachersFilterBar();
       $("#addTeachersBtn").onclick = () => openModal("teachers");
       $("#exportTeachers").onclick = () => exportUsers("teachers");
     }
     renderTeachersBody();
+  }
+
+  function teacherFilterActiveCount(ui, f) {
+    let n = 0;
+    if (ui.statusOn && f.status) n++;
+    if (ui.tracksOn && f.tracks) n++;
+    return n;
+  }
+
+  function teacherFilterChipsHtml(ui, f) {
+    const chips = [];
+    if (ui.statusOn && f.status) chips.push({ key: "status", label: `Статус: ${D.statusLabel[f.status] || f.status}` });
+    if (ui.tracksOn && f.tracks) chips.push({ key: "tracks", label: f.tracks === "has" ? "Есть треки" : "Без треков" });
+    if (!chips.length) return "";
+    return `<div class="smu-filter-chips" id="teacherFilterChips">${chips.map(c =>
+      `<span class="smu-filter-chip">${c.label}<button type="button" data-clear-teacher-filter="${c.key}" aria-label="Убрать">×</button></span>`
+    ).join("")}</div>`;
+  }
+
+  function teacherFiltersBarHtml(ui, f) {
+    const count = teacherFilterActiveCount(ui, f);
+    return `<div class="smu-roster-filters people-list-filters" id="teachersFiltersBar">
+      <input type="search" class="cell-input smu-search-input" id="searchTeachers" placeholder="Поиск по ФИО, телефону, трекам" value="${state.search.teachers || ""}" autocomplete="off">
+      <div class="smu-filter-dropdown" id="teacherFilterDropdown">
+        <button type="button" class="btn small secondary smu-filter-trigger" id="teacherFilterBtn">
+          ${I("layers")}Фильтры
+          <span class="smu-filter-badge" data-count="${count}">${count || ""}</span>
+        </button>
+        <div class="smu-filter-menu" id="teacherFilterMenu" hidden>
+          <div class="smu-filter-menu-item">
+            <label class="smu-filter-check-row"><input type="checkbox" id="teacherFilterStatusOn"${ui.statusOn ? " checked" : ""}> Статус</label>
+            <div class="smu-filter-nested" id="teacherFilterStatusNested"${ui.statusOn ? "" : " hidden"}><div id="teacherFilterStatusWrap"></div></div>
+          </div>
+          <div class="smu-filter-menu-item">
+            <label class="smu-filter-check-row"><input type="checkbox" id="teacherFilterTracksOn"${ui.tracksOn ? " checked" : ""}> Треки</label>
+            <div class="smu-filter-nested" id="teacherFilterTracksNested"${ui.tracksOn ? "" : " hidden"}><div id="teacherFilterTracksWrap"></div></div>
+          </div>
+          <div class="smu-filter-menu-foot">
+            <button type="button" class="btn small secondary" id="teacherFilterReset">Сбросить</button>
+            <button type="button" class="btn small" id="teacherFilterClose">Готово</button>
+          </div>
+        </div>
+      </div>
+      ${teacherFilterChipsHtml(ui, f)}
+      <span class="people-filter-count" id="teacherFilterCount"></span>
+    </div>`;
+  }
+
+  function destroyTeacherFilterCmps() {
+    ["tchStatus", "tchTracks"].forEach(k => {
+      filterCmps[k]?.destroy?.();
+      delete filterCmps[k];
+    });
+  }
+
+  function mountTeacherFilterSelects(f, ui, onChange) {
+    destroyTeacherFilterCmps();
+    filterCmps.tchStatus = UI.createSelect($("#teacherFilterStatusWrap"), {
+      label: "",
+      options: [{ value: "", label: "— выберите —" }, { value: "active", label: "Активен" }, { value: "inactive", label: "Не активен" }],
+      value: f.status,
+      onChange: v => { f.status = v; onChange(); },
+    });
+    filterCmps.tchTracks = UI.createSelect($("#teacherFilterTracksWrap"), {
+      label: "",
+      options: [{ value: "", label: "— выберите —" }, { value: "has", label: "Есть треки" }, { value: "none", label: "Без треков" }],
+      value: f.tracks,
+      onChange: v => { f.tracks = v; onChange(); },
+    });
+  }
+
+  function refreshTeachersFilterBar() {
+    const ui = state.teachersListUi;
+    const f = state.filters.teachers;
+    const bar = $("#teachersFiltersBar");
+    if (!bar) return;
+    state.search.teachers = $("#searchTeachers")?.value || state.search.teachers || "";
+    const menuOpen = !$("#teacherFilterMenu")?.hidden;
+    bar.outerHTML = teacherFiltersBarHtml(ui, f);
+    bindTeachersFilterBar();
+    if (menuOpen) {
+      const menu = $("#teacherFilterMenu");
+      if (menu) menu.hidden = false;
+    }
+    updateTeacherFilterCount();
+  }
+
+  function updateTeacherFilterCount() {
+    const el = $("#teacherFilterCount");
+    if (el) el.textContent = `${filterTeachers().length} из ${D.usersByRole("teacher").length}`;
+  }
+
+  function bindTeachersFilterBar() {
+    const ui = state.teachersListUi;
+    const f = state.filters.teachers;
+    const rerender = () => { pickDefaultInstructor(); renderTeachersBody(); updateTeacherFilterCount(); };
+    const syncBar = () => refreshTeachersFilterBar();
+    ensurePanelDropdownDocClose();
+
+    $("#searchTeachers")?.addEventListener("input", e => { state.search.teachers = e.target.value; rerender(); });
+
+    const menu = $("#teacherFilterMenu");
+    const btn = $("#teacherFilterBtn");
+    const dropdown = $("#teacherFilterDropdown");
+    btn?.addEventListener("click", e => {
+      e.stopPropagation();
+      const willOpen = menu?.hidden;
+      document.querySelectorAll(".smu-filter-menu, .smu-assign-menu").forEach(m => { m.hidden = true; });
+      if (willOpen && menu) menu.hidden = false;
+    });
+    menu?.addEventListener("click", e => e.stopPropagation());
+    dropdown?.addEventListener("click", e => e.stopPropagation());
+
+    mountTeacherFilterSelects(f, ui, () => { syncBar(); rerender(); });
+
+    const bindNested = (checkId, nestedId, onKey, valueKey, cmpKey) => {
+      const check = $(checkId);
+      const nested = $(nestedId);
+      if (!check || !nested) return;
+      check.onchange = () => {
+        ui[onKey] = check.checked;
+        nested.hidden = !check.checked;
+        if (!check.checked) {
+          f[valueKey] = "";
+          filterCmps[cmpKey]?.setValue?.("");
+        }
+        syncBar(); rerender();
+      };
+    };
+    bindNested("#teacherFilterStatusOn", "#teacherFilterStatusNested", "statusOn", "status", "tchStatus");
+    bindNested("#teacherFilterTracksOn", "#teacherFilterTracksNested", "tracksOn", "tracks", "tchTracks");
+
+    $("#teacherFilterReset")?.addEventListener("click", () => {
+      ui.statusOn = false; ui.tracksOn = false;
+      f.status = ""; f.tracks = "";
+      syncBar(); rerender();
+    });
+    $("#teacherFilterClose")?.addEventListener("click", () => { if (menu) menu.hidden = true; });
+
+    document.querySelectorAll("[data-clear-teacher-filter]").forEach(chipBtn => {
+      chipBtn.onclick = () => {
+        const key = chipBtn.dataset.clearTeacherFilter;
+        if (key === "status") { ui.statusOn = false; f.status = ""; }
+        if (key === "tracks") { ui.tracksOn = false; f.tracks = ""; }
+        syncBar(); rerender();
+      };
+    });
   }
 
   function filterCurators() {
@@ -1556,7 +1979,7 @@
     });
   }
 
-  function renderCuratorDetail() {
+  async function renderCuratorDetail() {
     const host = $("#curatorDetailHost");
     if (!host) return;
     pickDefaultCurator();
@@ -1565,6 +1988,7 @@
       host.innerHTML = `<div class="curator-empty-detail">Выберите куратора или добавьте нового</div>`;
       return;
     }
+    await ensureStaffRemarks(c.id);
     const draft = initCuratorDraft(c.id);
     const summary = curatorWardSummary(c.id);
     const dirty = curatorWardsDirty(c.id);
@@ -1590,9 +2014,10 @@
       <div class="curator-metrics">
         <div class="curator-metric"><strong>${summary.total}</strong><span>подопечных</span></div>
         <div class="curator-metric${summary.noPhone ? " warn" : ""}"><strong>${summary.noPhone}</strong><span>без тел.</span></div>
-        <div class="curator-metric${summary.withStrikes ? " danger" : ""}"><strong>${summary.withStrikes}</strong><span>страйки</span></div>
-        <div class="curator-metric${summary.withIssues ? " warn" : ""}"><strong>${summary.withIssues}</strong><span>замечания</span></div>
+        <div class="curator-metric${summary.withStrikes ? " danger" : ""}"><strong>${summary.withStrikes}</strong><span>страйки у подоп.</span></div>
+        <div class="curator-metric${summary.withIssues ? " warn" : ""}"><strong>${summary.withIssues}</strong><span>пропуски</span></div>
       </div>
+      ${staffDisciplineHtml(c.id)}
       <div class="ward-dual-list">
         <div class="curator-ward-col">
           <div class="curator-ward-col-head">
@@ -1600,7 +2025,7 @@
             <span class="count">${draft.wardIds.length}</span>
           </div>
           <div class="curator-ward-col-tools">
-            <input type="search" class="cell-input" id="curatorSearchWard" placeholder="Поиск…" value="${draft.searchWard || ""}">
+            <input type="search" class="curator-search-input" id="curatorSearchWard" placeholder="Поиск подопечного…" value="${draft.searchWard || ""}">
           </div>
           <div class="curator-ward-col-body" id="curatorWardList"></div>
         </div>
@@ -1615,7 +2040,7 @@
               <button type="button" class="chip-btn ${draft.availFilter === "no_phone" ? "active" : ""}" data-avail-filter="no_phone">Без тел.</button>
               <button type="button" class="chip-btn ${draft.availFilter === "other_curator" ? "active" : ""}" data-avail-filter="other_curator">У другого</button>
             </div>
-            <input type="search" class="cell-input" id="curatorSearchAvail" placeholder="Поиск…" value="${draft.searchAvail || ""}">
+            <input type="search" class="curator-search-input" id="curatorSearchAvail" placeholder="Поиск ученика…" value="${draft.searchAvail || ""}">
           </div>
           <div class="curator-ward-col-body" id="curatorAvailList"></div>
         </div>
@@ -1635,6 +2060,7 @@
       switchTab("reports");
     };
     $("#curatorSaveWardsBtn").onclick = () => saveCuratorWards(c.id);
+    bindStaffDiscipline(host, c.id, renderCuratorDetail);
     renderCuratorWardLists(c.id);
   }
 
@@ -1701,7 +2127,7 @@
       <div class="curator-layout">
         <aside class="curator-sidebar-wrap">
           <div class="curator-sidebar-head">
-            <input type="search" id="searchCurators" placeholder="Поиск…" value="${state.search.curators || ""}">
+            <input type="search" class="curator-search-input" id="searchCurators" placeholder="Поиск по ФИО, телефону, подопечным" value="${state.search.curators || ""}">
             <span class="curator-sidebar-count" id="curatorSidebarCount">${filterCurators().length}</span>
           </div>
           <div class="curator-sidebar" id="curatorSidebarList"></div>
@@ -1726,6 +2152,8 @@
   }
 
   function destroyTrackCmps() {
+    destroyTrackEmpFilterCmps();
+    destroyTrackInstFilterCmps();
     Object.values(trackCmps).forEach(c => c?.destroy?.());
     Object.keys(trackCmps).forEach(k => delete trackCmps[k]);
   }
@@ -1746,6 +2174,56 @@
     return { active: "Активен", completed: "Завершён", inactive: "Не активен" }[v] || v;
   }
 
+  function trackDaysRemainingText(track, items) {
+    const dueDates = items.map(r => r.due_date).filter(Boolean);
+    if (dueDates.length) {
+      const due = new Date(String(dueDates[0]).slice(0, 10));
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      due.setHours(0, 0, 0, 0);
+      const diff = Math.ceil((due - today) / 86400000);
+      if (diff < 0) return `просрочено на ${Math.abs(diff)} дн.`;
+      if (diff === 0) return "осталось сегодня";
+      return `осталось ${diff} дн.`;
+    }
+    const days = track.completion_days || 90;
+    return `срок ${days} дн.`;
+  }
+
+  function trackSmuFilterOptions(items) {
+    const seen = new Map();
+    items.forEach(row => {
+      const key = row.smu_code || row.smu_name;
+      if (key && !seen.has(key)) seen.set(key, row.smu_name || row.smu_code);
+    });
+    const opts = [{ value: "", label: "— выберите —" }];
+    [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1], "ru")).forEach(([value, label]) => {
+      opts.push({ value, label });
+    });
+    if (items.some(r => !r.smu_name && !r.smu_code)) {
+      opts.push({ value: "__none__", label: "Без СМУ" });
+    }
+    return opts;
+  }
+
+  function trackEmpSmuChipLabel(empSmu, items) {
+    if (empSmu === "__none__") return "Без СМУ";
+    const row = items.find(r => (r.smu_code || r.smu_name) === empSmu);
+    return `СМУ: ${row?.smu_name || empSmu}`;
+  }
+
+  function destroyTrackEmpFilterCmps() {
+    ["empStatus", "empSmu", "empProgress"].forEach(k => {
+      trackCmps[k]?.destroy?.();
+      delete trackCmps[k];
+    });
+  }
+
+  function destroyTrackInstFilterCmps() {
+    trackCmps.instStatus?.destroy?.();
+    delete trackCmps.instStatus;
+  }
+
   function trackEmpActiveFilterCount(ui) {
     let n = 0;
     if (ui.empStatusOn && ui.empStatus) n += 1;
@@ -1754,11 +2232,11 @@
     return n;
   }
 
-  function trackEmpFilterChipsHtml(ui) {
+  function trackEmpFilterChipsHtml(ui, items) {
     const chips = [];
     if (ui.empStatusOn && ui.empStatus) chips.push({ key: "status", label: `Статус: ${trackEmpStatusLabel(ui.empStatus)}` });
     if (ui.empSmuOn && ui.empSmu) {
-      chips.push({ key: "smu", label: ui.empSmu === "with" ? "СМУ: есть" : "СМУ: нет" });
+      chips.push({ key: "smu", label: trackEmpSmuChipLabel(ui.empSmu, items) });
     }
     if (ui.empProgressOn && ui.empProgress) {
       chips.push({ key: "progress", label: ui.empProgress === "incomplete" ? "Практика не завершена" : "Есть блокировка" });
@@ -1769,7 +2247,7 @@
     ).join("")}</div>`;
   }
 
-  function trackEmpFiltersBarHtml(ui) {
+  function trackEmpFiltersBarHtml(ui, items) {
     const count = trackEmpActiveFilterCount(ui);
     return `<div class="smu-roster-filters track-roster-filters">
       <input type="search" class="cell-input smu-search-input" id="trackEmpSearch" placeholder="Поиск по ФИО, телефону, СМУ…" value="${ui.empSearch || ""}" autocomplete="off">
@@ -1782,32 +2260,19 @@
           <div class="smu-filter-menu-item">
             <label class="smu-filter-check-row"><input type="checkbox" id="trackEmpFilterStatusOn"${ui.empStatusOn ? " checked" : ""}> Статус</label>
             <div class="smu-filter-nested" id="trackEmpFilterStatusNested"${ui.empStatusOn ? "" : " hidden"}>
-              <select class="cell-input" id="trackEmpFilterStatus">
-                <option value="">— выберите —</option>
-                <option value="active" ${ui.empStatus === "active" ? "selected" : ""}>Активен</option>
-                <option value="completed" ${ui.empStatus === "completed" ? "selected" : ""}>Завершён</option>
-                <option value="inactive" ${ui.empStatus === "inactive" ? "selected" : ""}>Не активен</option>
-              </select>
+              <div id="trackEmpFilterStatusWrap"></div>
             </div>
           </div>
           <div class="smu-filter-menu-item">
             <label class="smu-filter-check-row"><input type="checkbox" id="trackEmpFilterSmuOn"${ui.empSmuOn ? " checked" : ""}> СМУ</label>
             <div class="smu-filter-nested" id="trackEmpFilterSmuNested"${ui.empSmuOn ? "" : " hidden"}>
-              <select class="cell-input" id="trackEmpFilterSmu">
-                <option value="">— выберите —</option>
-                <option value="with" ${ui.empSmu === "with" ? "selected" : ""}>Есть СМУ</option>
-                <option value="without" ${ui.empSmu === "without" ? "selected" : ""}>Без СМУ</option>
-              </select>
+              <div id="trackEmpFilterSmuWrap"></div>
             </div>
           </div>
           <div class="smu-filter-menu-item">
             <label class="smu-filter-check-row"><input type="checkbox" id="trackEmpFilterProgressOn"${ui.empProgressOn ? " checked" : ""}> Прогресс</label>
             <div class="smu-filter-nested" id="trackEmpFilterProgressNested"${ui.empProgressOn ? "" : " hidden"}>
-              <select class="cell-input" id="trackEmpFilterProgress">
-                <option value="">— выберите —</option>
-                <option value="incomplete" ${ui.empProgress === "incomplete" ? "selected" : ""}>Практика не завершена</option>
-                <option value="locked" ${ui.empProgress === "locked" ? "selected" : ""}>Есть блокировка</option>
-              </select>
+              <div id="trackEmpFilterProgressWrap"></div>
             </div>
           </div>
           <div class="smu-filter-menu-foot">
@@ -1816,7 +2281,7 @@
           </div>
         </div>
       </div>
-      ${trackEmpFilterChipsHtml(ui)}
+      ${trackEmpFilterChipsHtml(ui, items)}
     </div>`;
   }
 
@@ -1845,11 +2310,7 @@
           <div class="smu-filter-menu-item">
             <label class="smu-filter-check-row"><input type="checkbox" id="trackInstFilterStatusOn"${ui.instStatusOn ? " checked" : ""}> Статус</label>
             <div class="smu-filter-nested" id="trackInstFilterStatusNested"${ui.instStatusOn ? "" : " hidden"}>
-              <select class="cell-input" id="trackInstFilterStatus">
-                <option value="">— выберите —</option>
-                <option value="active" ${ui.instStatus === "active" ? "selected" : ""}>Активен</option>
-                <option value="inactive" ${ui.instStatus === "inactive" ? "selected" : ""}>Не активен</option>
-              </select>
+              <div id="trackInstFilterStatusWrap"></div>
             </div>
           </div>
           <div class="smu-filter-menu-foot">
@@ -1877,8 +2338,14 @@
     const q = (ui.empSearch || "").toLowerCase();
     return items.filter(row => {
       if (ui.empStatusOn && ui.empStatus && row.status !== ui.empStatus) return false;
-      if (ui.empSmuOn && ui.empSmu === "with" && !row.smu_name) return false;
-      if (ui.empSmuOn && ui.empSmu === "without" && row.smu_name) return false;
+      if (ui.empSmuOn && ui.empSmu) {
+        const rowKey = row.smu_code || row.smu_name || "";
+        if (ui.empSmu === "__none__") {
+          if (rowKey) return false;
+        } else if (rowKey !== ui.empSmu) {
+          return false;
+        }
+      }
       if (ui.empProgressOn && ui.empProgress === "incomplete") {
         const done = row.practice_done || 0;
         if (done >= (track.practice_required || 0)) return false;
@@ -1912,20 +2379,17 @@
     const ui = state.trackDetailUi;
     const filtered = filterTrackEmployees(items, track, ui);
     host.innerHTML = filtered.length ? `<div class="table-wrap"><table class="entity-table"><thead><tr>
-      <th>Сотрудник</th><th>Телефон</th><th>Срок до</th><th>СМУ</th><th>Практика</th><th>Вес</th><th>Блок до</th><th>Статус</th>
+      <th>Сотрудник</th><th>Телефон</th><th>СМУ</th><th>Практика</th><th>Блок до</th><th>Статус</th>
     </tr></thead><tbody>${filtered.map(row => {
       const name = [row.last_name, row.first_name].filter(Boolean).join(" ") || "—";
       const prog = `${row.practice_done || 0}/${track.practice_required}`;
       const lock = row.lock_until ? String(row.lock_until).slice(0, 10) : "—";
-      const due = row.due_date ? String(row.due_date).slice(0, 10) : "—";
       const statusLabel = row.status === "active" ? "активен" : row.status === "completed" ? "завершён" : row.status;
       return `<tr>
         <td><strong>${name}</strong></td>
         <td>${row.phone || "—"}</td>
-        <td>${due}</td>
         <td>${row.smu_name || "—"}</td>
         <td>${prog}</td>
-        <td>${row.weight != null ? Number(row.weight).toFixed(1) : "—"}</td>
         <td>${lock}</td>
         <td><span class="tag ${row.status === "active" ? "green" : row.status === "completed" ? "yellow" : "gray"}">${statusLabel}</span></td>
       </tr>`;
@@ -1985,12 +2449,39 @@
     if (!bar) return;
     ui.empSearch = $("#trackEmpSearch")?.value || ui.empSearch || "";
     const menuOpen = !$("#trackEmpFilterMenu")?.hidden;
-    bar.outerHTML = trackEmpFiltersBarHtml(ui);
+    bar.outerHTML = trackEmpFiltersBarHtml(ui, items);
     bindTrackEmpFilterMenu(trackId, track, items);
     if (menuOpen) {
       const menu = $("#trackEmpFilterMenu");
       if (menu) menu.hidden = false;
     }
+  }
+
+  function mountTrackEmpFilterSelects(items, ui, onChange) {
+    destroyTrackEmpFilterCmps();
+    const statusOpts = [
+      { value: "", label: "— выберите —" },
+      { value: "active", label: "Активен" },
+      { value: "completed", label: "Завершён" },
+      { value: "inactive", label: "Не активен" },
+    ];
+    trackCmps.empStatus = UI.createSelect($("#trackEmpFilterStatusWrap"), {
+      label: "", options: statusOpts, value: ui.empStatus,
+      onChange: v => { ui.empStatus = v; onChange(); },
+    });
+    trackCmps.empSmu = UI.createSelect($("#trackEmpFilterSmuWrap"), {
+      label: "", options: trackSmuFilterOptions(items), value: ui.empSmu,
+      onChange: v => { ui.empSmu = v; onChange(); },
+    });
+    const progressOpts = [
+      { value: "", label: "— выберите —" },
+      { value: "incomplete", label: "Практика не завершена" },
+      { value: "locked", label: "Есть блокировка" },
+    ];
+    trackCmps.empProgress = UI.createSelect($("#trackEmpFilterProgressWrap"), {
+      label: "", options: progressOpts, value: ui.empProgress,
+      onChange: v => { ui.empProgress = v; onChange(); },
+    });
   }
 
   function bindTrackEmpFilterMenu(trackId, track, items) {
@@ -2016,6 +2507,9 @@
     menu?.addEventListener("click", e => e.stopPropagation());
     dropdown?.addEventListener("click", e => e.stopPropagation());
 
+    const onFilterChange = () => { syncBar(); rerender(); };
+    mountTrackEmpFilterSelects(items, ui, onFilterChange);
+
     const bindNested = (checkId, nestedId, onKey, valueKey) => {
       const check = $(checkId);
       const nested = $(nestedId);
@@ -2023,7 +2517,10 @@
       check.onchange = () => {
         ui[onKey] = check.checked;
         nested.hidden = !check.checked;
-        if (!check.checked) ui[valueKey] = "";
+        if (!check.checked) {
+          ui[valueKey] = "";
+          trackCmps[valueKey === "empStatus" ? "empStatus" : valueKey === "empSmu" ? "empSmu" : "empProgress"]?.setValue?.("");
+        }
         syncBar();
         rerender();
       };
@@ -2031,10 +2528,6 @@
     bindNested("#trackEmpFilterStatusOn", "#trackEmpFilterStatusNested", "empStatusOn", "empStatus");
     bindNested("#trackEmpFilterSmuOn", "#trackEmpFilterSmuNested", "empSmuOn", "empSmu");
     bindNested("#trackEmpFilterProgressOn", "#trackEmpFilterProgressNested", "empProgressOn", "empProgress");
-
-    $("#trackEmpFilterStatus")?.addEventListener("change", e => { ui.empStatus = e.target.value; syncBar(); rerender(); });
-    $("#trackEmpFilterSmu")?.addEventListener("change", e => { ui.empSmu = e.target.value; syncBar(); rerender(); });
-    $("#trackEmpFilterProgress")?.addEventListener("change", e => { ui.empProgress = e.target.value; syncBar(); rerender(); });
 
     $("#trackEmpFilterReset")?.addEventListener("click", () => {
       ui.empStatusOn = false; ui.empStatus = "";
@@ -2092,15 +2585,29 @@
     menu?.addEventListener("click", e => e.stopPropagation());
     dropdown?.addEventListener("click", e => e.stopPropagation());
 
+    destroyTrackInstFilterCmps();
+    trackCmps.instStatus = UI.createSelect($("#trackInstFilterStatusWrap"), {
+      label: "",
+      options: [
+        { value: "", label: "— выберите —" },
+        { value: "active", label: "Активен" },
+        { value: "inactive", label: "Не активен" },
+      ],
+      value: ui.instStatus,
+      onChange: v => { ui.instStatus = v; syncBar(); rerender(); },
+    });
+
     const check = $("#trackInstFilterStatusOn");
     const nested = $("#trackInstFilterStatusNested");
     check?.addEventListener("change", () => {
       ui.instStatusOn = check.checked;
       if (nested) nested.hidden = !check.checked;
-      if (!check.checked) ui.instStatus = "";
+      if (!check.checked) {
+        ui.instStatus = "";
+        trackCmps.instStatus?.setValue?.("");
+      }
       syncBar(); rerender();
     });
-    $("#trackInstFilterStatus")?.addEventListener("change", e => { ui.instStatus = e.target.value; syncBar(); rerender(); });
     $("#trackInstFilterReset")?.addEventListener("click", () => {
       ui.instStatusOn = false; ui.instStatus = "";
       syncBar(); rerender();
@@ -2260,10 +2767,11 @@
         const btn = $(`#trackTab${name.charAt(0).toUpperCase() + name.slice(1)}`);
         if (btn) btn.classList.toggle("active", name === tab);
       });
+      if (tab === "settings") renderTrackFormationSettings(trackId);
     };
     $("#trackTabEmployees")?.addEventListener("click", () => showTab("employees"));
     $("#trackTabInstructors")?.addEventListener("click", () => showTab("instructors"));
-    $("#trackTabSettings")?.addEventListener("click", () => { showTab("settings"); renderTrackFormationSettings(trackId); });
+    $("#trackTabSettings")?.addEventListener("click", () => showTab("settings"));
     showTab(ui.tab);
 
     const rerenderEmp = () => renderTrackEmployeesTable(trackId, track, items);
@@ -2284,14 +2792,6 @@
         await reloadData();
         showToast("Трек обновлён", "success");
         renderTracks();
-      } catch (err) { showToast(err.message || "Ошибка", "error"); }
-    });
-
-    $("#recalcWeightsBtn")?.addEventListener("click", async () => {
-      try {
-        const res = await HrApi.recalculateTrackWeights(trackId, true);
-        showToast(`Веса пересчитаны: ${res.updated || 0}`, "success");
-        renderTrackDetail(trackId);
       } catch (err) { showToast(err.message || "Ошибка", "error"); }
     });
 
@@ -2337,15 +2837,15 @@
     const instN = trackInstructorLinks(trackId).length;
     const empN = items.length;
     const activeEmp = items.filter(r => r.status === "active").length;
+    const daysLeft = trackDaysRemainingText(track, items);
 
     host.innerHTML = `<div class="track-detail-card">
       <div class="track-detail-head">
         <div>
           <h3 style="margin:0">${track.name}</h3>
-          <p class="stat-mini" style="margin:4px 0 0">${track.code} · практик: ${track.practice_required} · лекций: ${track.lecture_required} · срок: ${track.completion_days || 90} дн.</p>
+          <p class="stat-mini" style="margin:4px 0 0">${track.code} · практик: ${track.practice_required} · лекций: ${track.lecture_required} · ${daysLeft}</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button type="button" class="btn small secondary" id="recalcWeightsBtn">${I("refresh")}Пересчитать веса</button>
           <button type="button" class="btn danger small" id="deleteTrackBtn">${I("trash")}Удалить</button>
         </div>
       </div>
@@ -2367,7 +2867,7 @@
           <span class="stat-mini" id="trackEmpFilterCount"></span>
           ${trackAssignEmployeeDropdownHtml()}
         </div>
-        ${trackEmpFiltersBarHtml(ui)}
+        ${trackEmpFiltersBarHtml(ui, items)}
         <div id="trackEmployeesTableHost"></div>
       </div>
 
@@ -2380,18 +2880,28 @@
         <div class="track-people-list" id="trackInstructorsListHost"></div>
       </div>
 
-      <div id="trackSectionSettings" hidden>
-        <h4 class="track-section-title">Формирование</h4>
-        <div class="formation-settings-grid" id="trackFormationSettingsHost">
-          <div class="empty">Загрузка настроек…</div>
-        </div>
-        <h4 class="track-section-title">Параметры трека</h4>
-        <div class="inline-form-grid" style="margin-bottom:16px">
-          <div><label>Практик (шт.)</label><input type="number" id="trackEditPractice" min="0" value="${track.practice_required}"></div>
-          <div><label>Лекций (шт.)</label><input type="number" id="trackEditLecture" min="0" value="${track.lecture_required}"></div>
-          <div><label>Срок (дней)</label><input type="number" id="trackEditCompletionDays" min="1" value="${track.completion_days || 90}"></div>
-          <div style="display:flex;align-items:flex-end"><button type="button" class="btn small" id="saveTrackEditBtn">${I("check")}Сохранить</button></div>
-        </div>
+      <div id="trackSectionSettings" hidden class="track-settings-panel">
+        <section class="track-settings-block">
+          <div class="track-settings-block-head">
+            <h4 class="track-section-title">Формирование</h4>
+            <p class="track-settings-desc">Правила автоматического создания занятий для этого трека.</p>
+          </div>
+          <div class="track-formation-settings-host" id="trackFormationSettingsHost">
+            <div class="empty">Загрузка настроек…</div>
+          </div>
+        </section>
+        <section class="track-settings-block">
+          <div class="track-settings-block-head">
+            <h4 class="track-section-title">Параметры трека</h4>
+            <p class="track-settings-desc">Нормы программы и срок обучения сотрудников на треке.</p>
+          </div>
+          <div class="formation-settings-grid track-params-grid">
+            <div class="formation-settings-field"><label class="ui-label" for="trackEditPractice">Практик (шт.)</label><input type="number" id="trackEditPractice" class="cell-input" min="0" value="${track.practice_required}"></div>
+            <div class="formation-settings-field"><label class="ui-label" for="trackEditLecture">Лекций (шт.)</label><input type="number" id="trackEditLecture" class="cell-input" min="0" value="${track.lecture_required}"></div>
+            <div class="formation-settings-field"><label class="ui-label" for="trackEditCompletionDays">Срок (дней)</label><input type="number" id="trackEditCompletionDays" class="cell-input" min="1" value="${track.completion_days || 90}"></div>
+            <div class="formation-settings-actions"><button type="button" class="btn" id="saveTrackEditBtn">${I("check")} Сохранить</button></div>
+          </div>
+        </section>
       </div>
     </div>`;
 
@@ -3669,7 +4179,7 @@
       host.innerHTML = '<div class="empty">Нет треков — создайте трек в разделе «Треки»</div>';
       return;
     }
-    host.innerHTML = '<div style="margin-bottom:12px;max-width:320px"><label class="ui-label">Трек</label><select id="formationSettingsTrackPick" class="cell-input" style="width:100%;max-width:none"></select></div><div id="formationSettingsInner"></div>';
+    host.innerHTML = '<div class="formation-settings-toolbar"><label class="ui-label" for="formationSettingsTrackPick">Трек</label><select id="formationSettingsTrackPick" class="cell-input formation-settings-track-pick"></select></div><div class="track-formation-settings-host" id="formationSettingsInner"></div>';
     const sel = $("#formationSettingsTrackPick");
     sel.innerHTML = tracks.map(t => `<option value="${t.id}"${t.id === trackId ? " selected" : ""}>${t.name}</option>`).join("");
     sel.onchange = () => {
@@ -3771,7 +4281,6 @@
       const defaultMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
       if (!state.formationPlanMonth) state.formationPlanMonth = defaultMonth;
       panel.innerHTML = `<div class="card formation-page" id="formationPageHost"><h2>Формирование занятий</h2>
-      <p class="stat-mini" style="margin:0 0 14px">Календарь на месяц: по каждому дню — сколько треков готовы к созданию. Одно занятие на трек в день. Worker после 18:00 МСК создаёт на завтра.</p>
       <div class="formation-tabs">
         <button type="button" class="formation-tab${view === "plan" ? " active" : ""}" data-formation-view="plan">План на месяц</button>
         <button type="button" class="formation-tab${view === "settings" ? " active" : ""}" data-formation-view="settings">Настройки треков</button>
@@ -4069,10 +4578,105 @@
       showToast("Дата «По» не может быть раньше «С»", "warning");
       return;
     }
-    renderHrCalendar();
+    renderHrSchedule();
   }
 
-  function renderHrCalendar() {
+  function hrScheduleWeekLabel() {
+    const yFrom = hrRangeFrom.getFullYear();
+    const yTo = hrRangeTo.getFullYear();
+    const fromPart = hrRangeFrom.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+    const toPart = hrRangeTo.toLocaleDateString("ru-RU", {
+      day: "numeric",
+      month: "long",
+      year: yFrom === yTo ? undefined : "numeric",
+    });
+    return fromPart + " — " + toPart + (yFrom === yTo ? " " + yTo : "");
+  }
+
+  function hrScheduleShiftWeek(delta) {
+    hrRangeFrom = addDays(hrRangeFrom, delta * 7);
+    hrRangeTo = addDays(hrRangeTo, delta * 7);
+    hrScheduleCmps.from?.setValue?.(dateStr(hrRangeFrom));
+    hrScheduleCmps.to?.setValue?.(dateStr(hrRangeTo));
+    renderHrSchedule();
+  }
+
+  function hrScheduleGoToday() {
+    const x = new Date();
+    x.setHours(0, 0, 0, 0);
+    const day = x.getDay();
+    x.setDate(x.getDate() - ((day + 6) % 7));
+    hrRangeFrom = x;
+    hrRangeTo = addDays(x, 6);
+    hrScheduleCmps.from?.setValue?.(dateStr(hrRangeFrom));
+    hrScheduleCmps.to?.setValue?.(dateStr(hrRangeTo));
+    renderHrSchedule();
+  }
+
+  function hrScheduleFilteredLessons() {
+    const TS = TeacherSchedule;
+    let lessons = (D.lessons || []).map(normalizeHrLesson);
+    const gf = state.filters.lessons.track;
+    const tf = state.filters.lessons.type;
+    if (gf) lessons = lessons.filter(l => String(l.id_track || l.track_id) === String(gf));
+    if (tf) lessons = lessons.filter(l => (l.lesson_type || "") === tf);
+    return lessons.filter(l => {
+      const d = UI.parseDateStr(TS.lessonDateStr(l));
+      return d >= startOfDay(hrRangeFrom) && d <= startOfDay(hrRangeTo);
+    });
+  }
+
+  function renderHrScheduleSummary(lessons) {
+    const host = $("#hrScheduleSummary");
+    if (!host) return;
+    const practice = lessons.filter(l => l.lesson_type === "practice").length;
+    const lecture = lessons.filter(l => l.lesson_type === "lecture").length;
+    host.innerHTML =
+      `<span class="stat-chip"><strong>${lessons.length}</strong> занятий</span>` +
+      `<span class="stat-chip"><strong>${practice}</strong> практик</span>` +
+      `<span class="stat-chip"><strong>${lecture}</strong> лекций</span>` +
+      `<span class="stat-chip schedule-week-label">${hrScheduleWeekLabel()}</span>`;
+  }
+
+  function renderHrScheduleList(lessons, days) {
+    const host = $("#hrScheduleList");
+    if (!host) return;
+    const TS = TeacherSchedule;
+    const todayStr = dateStr(new Date());
+    const TYPE_LABELS = { practice: "Практика", lecture: "Лекция" };
+    if (!lessons.length) {
+      host.innerHTML = '<div class="empty schedule-empty">В выбранном периоде нет занятий</div>';
+      return;
+    }
+    const html = days.map(d => {
+      const ds = dateStr(d);
+      const dayLessons = lessons
+        .filter(l => TS.lessonDateStr(l) === ds)
+        .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+      if (!dayLessons.length) return "";
+      const title = d.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+      const cards = dayLessons.map(l => {
+        const type = l.lesson_type || "practice";
+        const tagClass = type === "lecture" ? "yellow" : "green";
+        return `<article class="schedule-lesson-card">
+          <div class="schedule-lesson-time">${l.time}${l.timeEnd ? "–" + l.timeEnd : ""}</div>
+          <div class="schedule-lesson-body">
+            <strong>${escapeHtml(l.title || TYPE_LABELS[type] || "Занятие")}</strong>
+            <span class="schedule-lesson-meta">${escapeHtml(l.track_name || "—")} · ${escapeHtml(l.teacher_name || "—")}</span>
+            ${l.place ? `<span class="schedule-lesson-meta">${escapeHtml(l.place)}</span>` : ""}
+          </div>
+          <span class="tag ${tagClass}">${TYPE_LABELS[type] || type}</span>
+        </article>`;
+      }).join("");
+      return `<section class="schedule-day-group${ds === todayStr ? " is-today" : ""}">
+        <h3 class="schedule-day-title">${title}${ds === todayStr ? ' <span class="schedule-today-badge">сегодня</span>' : ""}</h3>
+        <div class="schedule-lesson-cards">${cards}</div>
+      </section>`;
+    }).filter(Boolean).join("");
+    host.innerHTML = html || '<div class="empty schedule-empty">В выбранном периоде нет занятий</div>';
+  }
+
+  function renderHrCalendarBody(rangeLessons) {
     const TS = TeacherSchedule;
     const wrap = $("#hrCalWrap");
     if (!wrap) return;
@@ -4081,14 +4685,7 @@
       wrap.innerHTML = `<div class="empty">Выберите корректный период</div>`;
       return;
     }
-    let lessons = (D.lessons || []).map(normalizeHrLesson);
-    const gf = state.filters.lessons.track;
-    if (gf) lessons = lessons.filter(l => String(l.id_track || l.track_id) === String(gf));
     const todayStr = dateStr(new Date());
-    const rangeLessons = lessons.filter(l => {
-      const d = UI.parseDateStr(TS.lessonDateStr(l));
-      return d >= startOfDay(hrRangeFrom) && d <= startOfDay(hrRangeTo);
-    });
     const totalH = TS.totalHeightPx(TS.CAL_DAY_START, TS.CAL_DAY_END, TS.PX_PER_MIN);
     const hours = TS.hourMarkers(TS.CAL_DAY_START, TS.CAL_DAY_END);
     const daysHead = days.map(d => {
@@ -4129,19 +4726,51 @@
       </div>`;
   }
 
+  function renderHrSchedule() {
+    const lessons = hrScheduleFilteredLessons();
+    const days = daysBetween(hrRangeFrom, hrRangeTo);
+    renderHrScheduleSummary(lessons);
+    const listWrap = $("#hrScheduleList");
+    const calWrap = $("#hrCalWrap");
+    if (state.scheduleView === "list") {
+      if (listWrap) listWrap.hidden = false;
+      if (calWrap) calWrap.hidden = true;
+      renderHrScheduleList(lessons, days);
+    } else {
+      if (listWrap) listWrap.hidden = true;
+      if (calWrap) calWrap.hidden = false;
+      renderHrCalendarBody(lessons);
+    }
+    $("#panel-lessons")?.querySelectorAll("[data-schedule-view]").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.scheduleView === state.scheduleView);
+    });
+  }
+
   function renderLessons(refreshShell = false) {
     const panel = $("#panel-lessons");
-    if (refreshShell || !panel.querySelector("#hrCalWrap")) {
-      panel.innerHTML = `<div class="card"><h2>Расписание занятий</h2>
-      <p class="stat-mini" style="margin:0 0 14px">Календарь занятий · создание через «Формирование»</p>
-      <div class="toolbar schedule-toolbar">
-        <button type="button" class="btn small secondary" id="goFormationBtn">${I("users")}Формирование</button>
+    if (refreshShell || !panel.querySelector("#hrScheduleSummary")) {
+      panel.innerHTML = `<div class="card schedule-page"><div class="schedule-page-head">
+        <div><h2>Расписание занятий</h2><p class="stat-mini" style="margin:4px 0 0">Неделя или свой период · создание через «Формирование»</p></div>
+        <button type="button" class="btn small secondary" id="goFormationBtn">${I("users")} Формирование</button>
+      </div>
+      <div class="schedule-summary" id="hrScheduleSummary"></div>
+      <div class="schedule-toolbar">
+        <div class="schedule-nav">
+          <button type="button" class="btn small secondary schedule-nav-btn" id="hrSchedulePrevWeek" aria-label="Предыдущая неделя">‹</button>
+          <button type="button" class="btn small secondary" id="hrScheduleTodayBtn">Сегодня</button>
+          <button type="button" class="btn small secondary schedule-nav-btn" id="hrScheduleNextWeek" aria-label="Следующая неделя">›</button>
+        </div>
         <div class="toolbar-item" id="hrRangeFromWrap"></div>
         <div class="toolbar-item" id="hrRangeToWrap"></div>
         <div id="filterLessonTrack"></div>
+        <div id="filterLessonType"></div>
+        <div class="schedule-view-toggle">
+          <button type="button" class="btn small secondary schedule-view-btn" data-schedule-view="list">Список</button>
+          <button type="button" class="btn small secondary schedule-view-btn" data-schedule-view="grid">Сетка</button>
+        </div>
       </div>
-      <div class="cal-wrap" id="hrCalWrap"></div>
-      <p class="hint" style="margin-top:12px">Временная сетка 08:00–20:00. Как в панели преподавателя.</p>
+      <div id="hrScheduleList" class="schedule-list"></div>
+      <div class="cal-wrap" id="hrCalWrap" hidden></div>
     </div>`;
       hrScheduleCmps.from = UI.createDatePicker($("#hrRangeFromWrap"), {
         label: "С",
@@ -4156,16 +4785,45 @@
       const trackOpts = [{ value: "", label: "Все треки" }, ...(D.tracks?.() || []).filter(t => t.status !== "inactive").map(t => ({ value: t.id, label: t.name }))];
       filterCmps.lessonTrack?.destroy?.();
       filterCmps.lessonTrack = UI.createSelect($("#filterLessonTrack"), {
-        label: "", options: trackOpts, value: state.filters.lessons.track,
-        onChange: v => { state.filters.lessons.track = v; renderHrCalendar(); }
+        label: "Трек",
+        options: trackOpts,
+        value: state.filters.lessons.track,
+        onChange: v => { state.filters.lessons.track = v; renderHrSchedule(); },
+      });
+      const typeOpts = [
+        { value: "", label: "Все типы" },
+        { value: "practice", label: "Практика" },
+        { value: "lecture", label: "Лекция" },
+      ];
+      filterCmps.lessonType?.destroy?.();
+      filterCmps.lessonType = UI.createSelect($("#filterLessonType"), {
+        label: "Тип",
+        options: typeOpts,
+        value: state.filters.lessons.type,
+        onChange: v => { state.filters.lessons.type = v; renderHrSchedule(); },
       });
       $("#goFormationBtn").onclick = () => switchTab("formation");
+      $("#hrSchedulePrevWeek").onclick = () => hrScheduleShiftWeek(-1);
+      $("#hrScheduleNextWeek").onclick = () => hrScheduleShiftWeek(1);
+      $("#hrScheduleTodayBtn").onclick = () => hrScheduleGoToday();
+      panel.querySelectorAll("[data-schedule-view]").forEach(btn => {
+        btn.onclick = () => {
+          state.scheduleView = btn.dataset.scheduleView;
+          renderHrSchedule();
+        };
+      });
     }
-    renderHrCalendar();
+    renderHrSchedule();
   }
 
   function strikeName(s) {
     return [s.last_name, s.first_name].filter(Boolean).join(" ") || D.fullName(D.userById(s.user_id));
+  }
+
+  function strikeUserRoleLabel(s) {
+    const u = D.userById(s.user_id);
+    if (!u) return "—";
+    return ROLE_UI_LABELS[u.id_role] || u.id_role || "—";
   }
 
   function renderStrikesBody() {
@@ -4188,9 +4846,10 @@
     if (subtitle) subtitle.textContent = `Открытых апелляций: ${appeals.length}`;
     host.innerHTML = `${appeals.length ? `<div class="appeals-block"><h3>Открытые апелляции</h3>
         <div class="table-wrap"><table><thead><tr>
-          <th>Ученик</th><th>Трек</th><th>№</th><th>Причина страйка</th><th>Апелляция</th><th>Дата</th><th></th>
+          <th>Сотрудник</th><th>Роль</th><th>Трек</th><th>№</th><th>Причина страйка</th><th>Апелляция</th><th>Дата</th><th></th>
         </tr></thead><tbody>${appeals.map(a => `<tr>
           <td>${strikeName(a)}</td>
+          <td>${strikeUserRoleLabel(a)}</td>
           <td>${a.track_name || a.group_name || "—"}</td>
           <td><span class="tag yellow">${a.strike_number}/3</span></td>
           <td>${a.reason || "—"}</td>
@@ -4203,11 +4862,12 @@
         </tr>`).join("")}</tbody></table></div></div>` : ""}
       <h3 style="margin-top:20px">Все страйки</h3>
       ${slice.length ? `<div class="table-wrap"><table><thead><tr>
-        <th>Ученик</th><th>Трек</th><th>№</th><th>Статус</th><th>Причина</th><th>Дата</th>
+        <th>Сотрудник</th><th>Роль</th><th>Трек</th><th>№</th><th>Статус</th><th>Причина</th><th>Дата</th>
       </tr></thead><tbody>${slice.map(s => {
         const sc = s.status === "active" ? "red" : s.status === "appealed" ? "yellow" : "gray";
         return `<tr>
           <td>${strikeName(s)}</td>
+          <td>${strikeUserRoleLabel(s)}</td>
           <td>${s.track_name || s.group_name || "—"}</td>
           <td>${s.strike_number}/3</td>
           <td><span class="tag ${sc}">${STRIKE_STATUS_LABELS[s.status] || s.status}</span></td>
@@ -4254,6 +4914,8 @@
       showToast(approved ? "Апелляция одобрена, страйк снят" : "Апелляция отклонена", approved ? "success" : "info");
       renderStrikes();
       renderStudents();
+      renderCurators();
+      renderTeachers();
     } catch (err) {
       showToast(err.message || "Ошибка рассмотрения", "error");
     }

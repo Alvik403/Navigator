@@ -133,14 +133,15 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px 16px;
-  margin-bottom: 16px;
-  padding: 14px 16px;
+  margin-bottom: 0;
+  padding: 16px 18px;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: #fafbfc;
 }
 
-.formation-settings-grid .cell-input {
+.formation-settings-grid .cell-input,
+.formation-settings-grid select.cell-input {
   width: 100%;
   max-width: none;
 }
@@ -148,6 +149,108 @@
 .formation-settings-grid .ui-label {
   display: block;
   margin-bottom: 4px;
+}
+
+.formation-settings-toggle,
+.formation-settings-field--wide,
+.formation-settings-hint,
+.formation-settings-actions {
+  grid-column: 1 / -1;
+}
+
+.formation-settings-toggle {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
+.formation-settings-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.formation-settings-check input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.formation-settings-check strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.formation-settings-check small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.formation-settings-field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.formation-settings-hint {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--control-radius);
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.formation-settings-actions {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.track-params-grid {
+  margin-bottom: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 800px) {
+  .track-params-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+#formationSettingsHost {
+  max-width: 720px;
+}
+
+.formation-settings-toolbar {
+  margin-bottom: 14px;
+  max-width: 360px;
+}
+
+.formation-settings-toolbar .ui-label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.formation-settings-track-pick {
+  width: 100%;
+  max-width: none;
+}
+
+#formationSettingsInner.track-formation-settings-host,
+#formationSettingsInner.formation-settings-grid {
+  max-width: 720px;
 }
 
 .formation-slot-picks {

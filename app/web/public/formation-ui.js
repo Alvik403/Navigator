@@ -16,6 +16,51 @@
     below_min_members: "меньше минимума группы",
     auto_disabled: "автоформирование выключено",
   };
+  const FORMATION_TIME_CHOICES = ["12:00", "13:00", "14:00", "15:00"];
+
+  function formationConveyorSlots() {
+    if (window.D && typeof window.D.conveyorSlots === "function") {
+      return window.D.conveyorSlots() || [];
+    }
+    if (window.HrApi && typeof window.HrApi.getConveyorSlots === "function") {
+      return window.HrApi.getConveyorSlots() || [];
+    }
+    return [];
+  }
+
+  function formationSlotTimeLabel(slot) {
+    if (!slot) return "";
+    const parts = String(slot.starts_at_local || slot.name || "").slice(0, 8).split(":");
+    return parts[0].padStart(2, "0") + ":" + (parts[1] || "00").padStart(2, "0");
+  }
+
+  function formationSlotIdByTime(slots, time) {
+    const match = (slots || []).find(s => formationSlotTimeLabel(s) === time);
+    return match ? String(match.id) : "";
+  }
+
+  function buildFormationTimeOptions(slots, selectedSlotId) {
+    let selectedTime = FORMATION_TIME_CHOICES[0];
+    if (selectedSlotId) {
+      const current = (slots || []).find(s => String(s.id) === String(selectedSlotId));
+      const label = formationSlotTimeLabel(current);
+      if (FORMATION_TIME_CHOICES.includes(label)) selectedTime = label;
+    }
+    return FORMATION_TIME_CHOICES.map(time => {
+      const slotId = formationSlotIdByTime(slots, time);
+      const value = slotId || time;
+      return '<option value="' + value + '"' + (time === selectedTime ? " selected" : "") + ">" + time + "</option>";
+    }).join("");
+  }
+
+  function resolveFormationSlotId(rawValue) {
+    const value = String(rawValue || "").trim();
+    if (!value) return "";
+    if (FORMATION_TIME_CHOICES.includes(value)) {
+      return formationSlotIdByTime(formationConveyorSlots(), value) || value;
+    }
+    return value;
+  }
 
   function localDateStr(d) {
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -52,7 +97,7 @@
   }
 
   function formationSlotTime(slotId) {
-    const slot = (window.D?.conveyorSlots?.() || []).find(s => s.id === slotId);
+    const slot = formationConveyorSlots().find(s => s.id === slotId);
     if (!slot || !slot.starts_at_local) return null;
     const parts = String(slot.starts_at_local).slice(0, 5).split(":");
     return parts[0].padStart(2, "0") + ":" + (parts[1] || "00").padStart(2, "0");
@@ -365,31 +410,50 @@
   async function renderTrackFormationSettings(trackId, hostId, I, showToast) {
     const host = document.getElementById(hostId || "trackFormationSettingsHost");
     if (!host) return;
+    host.className = "track-formation-settings-host";
     host.innerHTML = '<div class="empty">Загрузка…</div>';
     try {
       const settings = await window.HrApi.loadTrackFormationSettings(trackId);
-      const slots = window.D?.conveyorSlots?.() || [];
-      const selectedId = (settings.formation_slot_ids || [])[0] || (slots[0]?.id || "");
-      const timeOptions = slots.length
-        ? slots.map(s => {
-            const t = String(s.starts_at_local || s.name || "").slice(0, 5);
-            return '<option value="' + s.id + '"' + (String(s.id) === String(selectedId) ? " selected" : "") + ">" + t + "</option>";
-          }).join("")
-        : '<option value="">09:00</option>';
-      host.innerHTML = '<div class="formation-settings-grid">' +
-        '<div><label class="ui-label"><input type="checkbox" id="tfAutoEnabled" ' + (settings.formation_auto_enabled !== false ? "checked" : "") + '> Автоформирование</label></div>' +
-        '<div><label class="ui-label">Тип занятия</label><select id="tfLessonType" class="cell-input" style="width:100%;max-width:none">' +
-        '<option value="practice"' + (settings.formation_lesson_type === "practice" ? " selected" : "") + '>Практика</option>' +
-        '<option value="lecture"' + (settings.formation_lesson_type === "lecture" ? " selected" : "") + '>Лекция</option></select></div>' +
-        '<div><label class="ui-label">Время занятия</label><select id="tfLessonTime" class="cell-input" style="width:100%;max-width:none"' + (slots.length ? "" : " disabled") + '>' + timeOptions + '</select></div>' +
-        '<div><label class="ui-label">Макс. в группе</label><input type="number" id="tfMaxMembers" class="cell-input" min="1" max="50" value="' + (settings.formation_max_members || 12) + '" style="width:100%;max-width:none"></div>' +
-        '<div><label class="ui-label">Мин. в группе</label><input type="number" id="tfMinMembers" class="cell-input" min="1" max="50" value="' + (settings.formation_min_members || 1) + '" style="width:100%;max-width:none"></div>' +
-        '<div><label class="ui-label">Место</label><input type="text" id="tfDefaultPlace" class="cell-input" value="' + (settings.formation_default_place || "") + '" placeholder="Площадка" style="width:100%;max-width:none"></div>' +
-        '<div style="grid-column:1/-1"><button type="button" class="btn small" id="saveTrackFormationBtn">' + I("check") + ' Сохранить</button></div></div>';
+      if (!host.isConnected) return;
+      const slots = formationConveyorSlots();
+      const selectedId = (settings.formation_slot_ids || [])[0] || formationSlotIdByTime(slots, FORMATION_TIME_CHOICES[0]) || "";
+      const timeOptions = buildFormationTimeOptions(slots, selectedId);
+      const placeVal = String(settings.formation_default_place || "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;");
+
+      host.className = "formation-settings-grid";
+      host.innerHTML =
+        '<div class="formation-settings-toggle">' +
+          '<label class="formation-settings-check">' +
+            '<input type="checkbox" id="tfAutoEnabled"' + (settings.formation_auto_enabled !== false ? " checked" : "") + ">" +
+            "<span><strong>Автоформирование</strong>" +
+            "<small>Автоматически создавать занятия по этому треку в выбранный слот</small></span>" +
+          "</label>" +
+        "</div>" +
+        '<div class="formation-settings-field"><label class="ui-label" for="tfLessonType">Тип занятия</label>' +
+        '<select id="tfLessonType" class="cell-input">' +
+        '<option value="practice"' + (settings.formation_lesson_type === "practice" ? " selected" : "") + ">Практика</option>" +
+        '<option value="lecture"' + (settings.formation_lesson_type === "lecture" ? " selected" : "") + ">Лекция</option></select></div>" +
+        '<div class="formation-settings-field"><label class="ui-label" for="tfLessonTime">Время занятия</label>' +
+        '<select id="tfLessonTime" class="cell-input">' + timeOptions + "</select></div>" +
+        '<div class="formation-settings-field"><label class="ui-label" for="tfMaxMembers">Макс. в группе</label>' +
+        '<input type="number" id="tfMaxMembers" class="cell-input" min="1" max="50" value="' + (settings.formation_max_members || 12) + '"></div>' +
+        '<div class="formation-settings-field"><label class="ui-label" for="tfMinMembers">Мин. в группе</label>' +
+        '<input type="number" id="tfMinMembers" class="cell-input" min="1" max="50" value="' + (settings.formation_min_members || 1) + '"></div>' +
+        '<div class="formation-settings-field formation-settings-field--wide"><label class="ui-label" for="tfDefaultPlace">Место</label>' +
+        '<input type="text" id="tfDefaultPlace" class="cell-input" value="' + placeVal + '" placeholder="Площадка · направление"></div>' +
+        '<div class="formation-settings-actions"><button type="button" class="btn" id="saveTrackFormationBtn">' + I("check") + " Сохранить</button></div>";
 
       document.getElementById("saveTrackFormationBtn").onclick = async function () {
         const slotEl = document.getElementById("tfLessonTime");
-        const slotIds = slotEl && slotEl.value ? [slotEl.value] : [];
+        const slotId = resolveFormationSlotId(slotEl && slotEl.value);
+        if (!slotId || FORMATION_TIME_CHOICES.includes(slotId)) {
+          showToast("Не удалось сохранить время. Обновите страницу.", "warning");
+          return;
+        }
+        const slotIds = [slotId];
         try {
           await window.HrApi.updateTrackFormationSettings(trackId, {
             formation_auto_enabled: document.getElementById("tfAutoEnabled").checked,
@@ -404,7 +468,9 @@
         } catch (err) { showToast(err.message || "Ошибка", "error"); }
       };
     } catch (err) {
-      host.innerHTML = '<div class="empty">' + (err.message || "Ошибка загрузки") + '</div>';
+      if (!host.isConnected) return;
+      host.className = "track-formation-settings-host";
+      host.innerHTML = '<div class="empty">' + (err.message || "Ошибка загрузки") + "</div>";
     }
   }
 

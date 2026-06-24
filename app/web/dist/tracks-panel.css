@@ -162,25 +162,62 @@
   margin-bottom: 12px;
 }
 
+.track-roster-filters .smu-filter-nested .ui-field {
+  margin: 0;
+  width: 100%;
+}
+
+.track-roster-filters .smu-filter-nested .ui-dropdown {
+  width: 100%;
+}
+
 #trackSectionEmployees,
 #trackSectionInstructors {
   min-width: 0;
 }
 
 .track-section-title {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 14px;
+  font-weight: 600;
 }
 
-#trackSectionSettings .formation-settings-grid {
-  margin-top: 4px;
+.track-settings-panel {
+  display: grid;
+  gap: 20px;
+  max-width: 720px;
 }
 
-#trackFormationSettingsHost .empty {
-  padding: 16px;
+.track-settings-block {
+  min-width: 0;
+}
+
+.track-settings-block-head {
+  margin-bottom: 10px;
+}
+
+.track-settings-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.track-formation-settings-host {
+  min-width: 0;
+}
+
+.track-formation-settings-host .empty {
+  padding: 16px 18px;
   border: 1px dashed var(--border);
-  border-radius: var(--control-radius);
+  border-radius: var(--radius-card);
   background: #fafbfc;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+#trackFormationSettingsHost.formation-settings-grid {
+  width: 100%;
 }
 
 .track-filters-bar {

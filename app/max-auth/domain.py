@@ -2864,6 +2864,11 @@ async def list_strikes(
                 JOIN app.tracks tr ON tr.id = l2.track_id
                 WHERE l2.id = s.lesson_id AND tr.id_hr = $2::uuid
             )
+            OR EXISTS (
+                SELECT 1 FROM app.profiles p3
+                JOIN app.roles r3 ON r3.id = p3.role_id
+                WHERE p3.user_id = s.user_id AND r3.code != 'employee'
+            )
           )
         ORDER BY s.created_at DESC
     """
@@ -3636,6 +3641,56 @@ async def list_user_strikes(user_id: str) -> list[dict[str, Any]]:
     async with get_pool().acquire() as conn:
         rows = await conn.fetch(sql, uuid.UUID(user_id))
     return [serialize_record(row) for row in rows]
+
+
+async def list_staff_remarks(user_id: str) -> list[dict[str, Any]]:
+    sql = """
+        SELECT r.id, r.user_id, r.text, r.issued_by, r.created_at,
+               ip.last_name AS issuer_last_name, ip.first_name AS issuer_first_name
+        FROM app.staff_remarks r
+        LEFT JOIN app.profiles ip ON ip.user_id = r.issued_by
+        WHERE r.user_id = $1::uuid
+        ORDER BY r.created_at DESC
+        LIMIT 100
+    """
+    async with get_pool().acquire() as conn:
+        rows = await conn.fetch(sql, uuid.UUID(user_id))
+    return [serialize_record(row) for row in rows]
+
+
+async def create_staff_remark(
+    user_id: str,
+    text: str,
+    *,
+    issued_by: str | None = None,
+) -> dict[str, Any]:
+    remark_text = text.strip()
+    if len(remark_text) < 3:
+        raise ValueError("Текст замечания слишком короткий")
+    issuer_uuid = uuid.UUID(issued_by) if issued_by else None
+    async with get_pool().acquire() as conn:
+        role_code = await conn.fetchval(
+            """
+            SELECT r.code
+            FROM app.profiles p
+            JOIN app.roles r ON r.id = p.role_id
+            WHERE p.user_id = $1::uuid
+            """,
+            uuid.UUID(user_id),
+        )
+        if role_code not in {"teacher", "curator"}:
+            raise ValueError("Замечания можно выписывать только инструкторам и кураторам")
+        row = await conn.fetchrow(
+            """
+            INSERT INTO app.staff_remarks (user_id, text, issued_by)
+            VALUES ($1::uuid, $2, $3::uuid)
+            RETURNING id, user_id, text, issued_by, created_at
+            """,
+            uuid.UUID(user_id),
+            remark_text,
+            issuer_uuid,
+        )
+    return serialize_record(row)
 
 
 async def submit_user_strike_appeal(user_id: str, strike_id: str, appeal_reason: str) -> dict[str, Any]:
