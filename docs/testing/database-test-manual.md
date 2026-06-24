@@ -31,6 +31,7 @@ http://localhost:5173/api/v1/db/tables
 
 В списке таблиц должны быть:
 
+- `conveyor_slots`
 - `attendance_marks`
 - `group_members`
 - `groups`
@@ -40,6 +41,9 @@ http://localhost:5173/api/v1/db/tables
 - `profiles`
 - `roles`
 - `strikes`
+- `track_teachers`
+- `tracks`
+- `user_tracks`
 - `users`
 
 ## 3. Заполнение demo-данными
@@ -58,11 +62,15 @@ Demo создаёт:
 - Куратора
 - Преподавателя
 - Сотрудника без телефона
+- Треки `Бетонщик`, `Арматурщик`, `Водитель бетономешалки`
+- Конвейерные слоты
+- Параллельные назначения пользователя на несколько треков
 - Группу `Backend-26`
 - Практическое занятие
 - Участника занятия
 - Отметку `late`
 - Страйк по опозданию
+- Страйк преподавателю без блокировки
 - Уведомление куратору
 
 ## 4. Проверочные запросы
@@ -81,27 +89,44 @@ ORDER BY p.last_name;
 ### Занятия и посещаемость
 
 ```sql
-SELECT l.id AS lesson_id, g.name AS group_name, l.lesson_type, l.starts_at, p.last_name, am.status AS attendance
+SELECT l.id AS lesson_id, g.name AS group_name, t.name AS track_name, cs.name AS slot_name,
+       l.lesson_type, l.starts_at, p.last_name, lm.role_in_lesson, am.status AS attendance
 FROM app.lessons l
-JOIN app.groups g ON g.id = l.group_id
+JOIN app.groups g ON g.id = COALESCE(l.reporting_group_id, l.group_id)
+LEFT JOIN app.tracks t ON t.id = l.track_id
+LEFT JOIN app.conveyor_slots cs ON cs.id = l.slot_id
 JOIN app.lesson_members lm ON lm.lesson_id = l.id
 JOIN app.profiles p ON p.user_id = lm.user_id
 LEFT JOIN app.attendance_marks am ON am.user_id = lm.user_id AND am.lesson_id = lm.lesson_id
 ORDER BY l.starts_at;
 ```
 
-Ожидаемо: занятие `practice`, группа `Backend-26`, участник `Ким`, посещаемость `late`.
+Ожидаемо: у занятий есть отчётная группа, трек/слот, участники с `role_in_lesson = employee` и преподаватель с `role_in_lesson = teacher`.
+
+### Треки
+
+```sql
+SELECT t.name, t.practice_required, count(ut.user_id) AS users_total
+FROM app.tracks t
+LEFT JOIN app.user_tracks ut ON ut.track_id = t.id AND ut.status = 'active'
+GROUP BY t.id, t.name, t.practice_required
+ORDER BY t.name;
+```
+
+Ожидаемо: треки `Бетонщик`, `Арматурщик`, `Водитель бетономешалки`; один пользователь может быть назначен на несколько треков.
 
 ### Страйки
 
 ```sql
-SELECT s.id, p.last_name, p.first_name, s.reason, s.status, s.strike_number, s.created_at
+SELECT s.id, p.last_name, p.first_name, r.code AS role, s.target_role,
+       s.reason, s.status, s.strike_number, s.created_at
 FROM app.strikes s
 JOIN app.profiles p ON p.user_id = s.user_id
+JOIN app.roles r ON r.id = p.role_id
 ORDER BY s.created_at DESC;
 ```
 
-Ожидаемо: один активный страйк с `reason = late`.
+Ожидаемо: есть страйки учеников и преподавателя; преподавательские страйки не переводят профиль в `inactive`.
 
 ### Уведомления
 

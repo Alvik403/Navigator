@@ -139,7 +139,7 @@ export async function loginWithPassword(username: string, password: string): Pro
     clearLocalAuth();
     throw new AuthError(
       "insufficient_roles",
-      `У пользователя «${resolvedUsername}» нет системной роли admin, hr или teacher.`,
+      `У пользователя «${resolvedUsername}» нет системной роли admin или hr.`,
     );
   }
 
@@ -167,7 +167,7 @@ export async function handleCallback(): Promise<{ portal: Portal; user: OidcUser
       "unknown";
     throw new AuthError(
       "insufficient_roles",
-      `У пользователя «${username}» нет системной роли admin, hr или teacher.`,
+      `У пользователя «${username}» нет системной роли admin или hr.`,
     );
   }
 
@@ -194,7 +194,7 @@ export class AuthError extends Error {
     this.hint =
       hint ??
       (code === "insufficient_roles"
-        ? "Назначьте пользователю роль admin, hr или teacher в профиле приложения."
+        ? "Назначьте пользователю роль admin или hr в профиле приложения."
         : "Попробуйте войти снова.");
     this.name = "AuthError";
   }

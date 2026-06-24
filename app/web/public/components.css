@@ -1,4 +1,4 @@
-/* MAX RASS — кнопки, поля, теги, таблицы, модалки */
+/* Навигатор — кнопки, поля, теги, таблицы, модалки */
 
 /* —— Кнопки —— */
 .btn {
@@ -48,6 +48,45 @@
   height: var(--control-h);
   padding: 0 var(--control-px);
   font-size: var(--control-font);
+}
+
+/* Чипы фильтров / выбора смен (HR-панель) */
+.chip-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.chip-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.chip-btn.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.chip-btn[data-pick-shift="2"].active,
+.chip-btn[data-quick-shift="2"].active,
+.chip-btn[data-extra-form-shift="2"].active {
+  background: #dbeafe;
+  border-color: #60a5fa;
+  color: #1e40af;
 }
 
 /* Полоса одинаковых контролов (селекты + кнопки) */

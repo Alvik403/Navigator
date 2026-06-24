@@ -1,4 +1,4 @@
-/* MAX RASS — кастомные UI-компоненты (select, date, time) */
+/* Навигатор — кастомные UI-компоненты (select, date, time) */
 (function (global) {
   "use strict";
 

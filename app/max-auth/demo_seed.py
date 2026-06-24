@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from random import Random
 from typing import Any
 
@@ -34,6 +34,11 @@ MIDDLE_NAMES = [
 ]
 
 DIRECTIONS = ["Backend", "Frontend", "DevOps", "Data Science", "QA"]
+TRACKS = [
+    ("betonshchik", "Бетонщик", 12),
+    ("armaturschik", "Арматурщик", 8),
+    ("mixer-driver", "Водитель бетономешалки", 6),
+]
 GROUP_SUFFIXES = ["26-A", "26-B", "25-C"]
 LESSON_TITLES = [
     "Введение", "Практика: REST API", "Code review", "Тестирование", "Деплой",
@@ -57,6 +62,14 @@ def _lid(lesson_idx: int) -> uuid.UUID:
 
 def _sid(strike_idx: int) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"max-rass-demo/strike/{strike_idx}")
+
+
+def _tid(track_idx: int) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"max-rass-demo/track/{track_idx}")
+
+
+def _slotid(slot_idx: int) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"max-rass-demo/slot/{slot_idx}")
 
 
 async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
@@ -219,8 +232,13 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                 )
 
             groups_touched = 0
+            tracks_touched = 0
+            user_tracks_touched = 0
+            slots_touched = 0
             direction_ids: list[uuid.UUID] = []
             working_group_ids: list[uuid.UUID] = []
+            track_ids: list[uuid.UUID] = []
+            slot_ids: list[uuid.UUID] = []
 
             for di, dir_name in enumerate(DIRECTIONS):
                 did = _gid(di, -1)
@@ -258,6 +276,61 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                     )
                     groups_touched += 1
 
+            for ti, (code, name, practice_required) in enumerate(TRACKS):
+                tid = _tid(ti)
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO app.tracks (id, code, name, practice_required, lecture_required, id_hr, status)
+                    VALUES ($1, $2, $3, $4, 0, $5, 'active')
+                    ON CONFLICT (code) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        practice_required = EXCLUDED.practice_required,
+                        id_hr = EXCLUDED.id_hr,
+                        status = EXCLUDED.status,
+                        updated_at = now()
+                    RETURNING id
+                    """,
+                    tid,
+                    code,
+                    name,
+                    practice_required,
+                    core["hr"],
+                )
+                track_ids.append(row["id"])
+                tracks_touched += 1
+
+            slot_specs = [
+                ("slot-09-00", "09:00", "09:00", 60),
+                ("slot-10-30", "10:30", "10:30", 60),
+                ("slot-12-00", "12:00", "12:00", 60),
+                ("slot-14-00", "14:00", "14:00", 60),
+                ("slot-15-30", "15:30", "15:30", 60),
+            ]
+            for si, (code, name, starts_at_local, duration_min) in enumerate(slot_specs):
+                sid = _slotid(si)
+                hour, minute = (int(part) for part in starts_at_local.split(":", 1))
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO app.conveyor_slots (id, code, name, starts_at_local, duration_min, sort_order)
+                    VALUES ($1, $2, $3, $4::time, $5, $6)
+                    ON CONFLICT (code) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        starts_at_local = EXCLUDED.starts_at_local,
+                        duration_min = EXCLUDED.duration_min,
+                        sort_order = EXCLUDED.sort_order,
+                        updated_at = now()
+                    RETURNING id
+                    """,
+                    sid,
+                    code,
+                    name,
+                    time(hour, minute),
+                    duration_min,
+                    (si + 1) * 10,
+                )
+                slot_ids.append(row["id"])
+                slots_touched += 1
+
             # Assign employees to groups (1–2 groups); ~6 without group
             ungrouped = set(_uid("employee", i) for i in range(70, 76))
             group_members: dict[uuid.UUID, list[uuid.UUID]] = {g: [] for g in working_group_ids}
@@ -286,6 +359,67 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                     )
                     members_touched += 1
 
+            for idx, eid in enumerate(employee_ids):
+                assigned_tracks = [track_ids[idx % len(track_ids)]]
+                if idx % 7 == 0:
+                    assigned_tracks.append(track_ids[(idx + 1) % len(track_ids)])
+                if eid == core["employee"]:
+                    assigned_tracks = track_ids[:]
+                for track_id in assigned_tracks:
+                    await conn.execute(
+                        """
+                        INSERT INTO app.user_tracks (user_id, track_id, assigned_by, status)
+                        VALUES ($1, $2, $3, 'active')
+                        ON CONFLICT (user_id, track_id) DO UPDATE SET
+                            assigned_by = EXCLUDED.assigned_by,
+                            status = EXCLUDED.status,
+                            completed_at = NULL,
+                            updated_at = now()
+                        """,
+                        eid,
+                        track_id,
+                        core["hr"],
+                    )
+                    user_tracks_touched += 1
+
+            smu_touched = 0
+            smu_rows = await conn.fetch(
+                "SELECT id, code FROM app.smu_patterns WHERE status = 'active' ORDER BY code"
+            )
+            for idx, eid in enumerate(employee_ids):
+                if smu_rows:
+                    pattern_id = smu_rows[idx % len(smu_rows)]["id"]
+                    await conn.execute(
+                        """
+                        INSERT INTO app.user_smu (user_id, smu_pattern_id)
+                        VALUES ($1, $2)
+                        ON CONFLICT (user_id) DO UPDATE SET smu_pattern_id = EXCLUDED.smu_pattern_id, updated_at = now()
+                        """,
+                        eid,
+                        pattern_id,
+                    )
+                    smu_touched += 1
+                if idx < 10:
+                    extra_date = (now + timedelta(days=idx % 5)).date()
+                    await conn.execute(
+                        """
+                        INSERT INTO app.smu_extra_shifts (user_id, shift_date, note)
+                        VALUES ($1, $2, $3)
+                        ON CONFLICT (user_id, shift_date) DO NOTHING
+                        """,
+                        eid,
+                        extra_date,
+                        "демо допсмена",
+                    )
+
+            for gi, gid in enumerate(working_group_ids):
+                teacher = teacher_ids[gi % len(teacher_ids)]
+                await conn.execute(
+                    "UPDATE app.groups SET instructor_id = $1 WHERE id = $2",
+                    teacher,
+                    gid,
+                )
+
             lessons_touched = 0
             marks_touched = 0
             lesson_records: list[dict[str, Any]] = []
@@ -297,6 +431,8 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                 for li in range(4):
                     lesson_idx += 1
                     lid = _lid(lesson_idx)
+                    track_id = track_ids[(gi + li) % len(track_ids)]
+                    slot_id = slot_ids[li % len(slot_ids)]
                     offset_days = li - 2  # 2 past, 2 future
                     starts = now + timedelta(days=offset_days, hours=10 + li)
                     ends = starts + timedelta(hours=2)
@@ -305,11 +441,15 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                     await conn.execute(
                         """
                         INSERT INTO app.lessons (
-                            id, group_id, teacher_id, starts_at, ends_at, place, lesson_type, title
+                            id, group_id, reporting_group_id, track_id, slot_id,
+                            teacher_id, starts_at, ends_at, place, lesson_type, title
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                         ON CONFLICT (id) DO UPDATE SET
                             group_id = EXCLUDED.group_id,
+                            reporting_group_id = EXCLUDED.reporting_group_id,
+                            track_id = EXCLUDED.track_id,
+                            slot_id = EXCLUDED.slot_id,
                             teacher_id = EXCLUDED.teacher_id,
                             starts_at = EXCLUDED.starts_at,
                             ends_at = EXCLUDED.ends_at,
@@ -319,6 +459,8 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                         """,
                         lid,
                         gid,
+                        track_id,
+                        slot_id,
                         teacher,
                         starts,
                         ends,
@@ -327,18 +469,33 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                         title,
                     )
                     lessons_touched += 1
-                    lesson_records.append({"id": lid, "group_id": gid, "teacher": teacher, "members": members, "past": offset_days < 0})
+                    lesson_records.append({"id": lid, "group_id": gid, "track_id": track_id, "teacher": teacher, "members": members, "past": offset_days < 0})
 
                     for uid in members:
                         await conn.execute(
                             """
-                            INSERT INTO app.lesson_members (user_id, lesson_id)
-                            VALUES ($1, $2)
-                            ON CONFLICT DO NOTHING
+                            INSERT INTO app.lesson_members (user_id, lesson_id, role_in_lesson, track_id)
+                            VALUES ($1, $2, 'employee', $3)
+                            ON CONFLICT (user_id, lesson_id) DO UPDATE SET
+                                role_in_lesson = EXCLUDED.role_in_lesson,
+                                track_id = EXCLUDED.track_id
                             """,
                             uid,
                             lid,
+                            track_id,
                         )
+                    await conn.execute(
+                        """
+                        INSERT INTO app.lesson_members (user_id, lesson_id, role_in_lesson, track_id)
+                        VALUES ($1, $2, 'teacher', $3)
+                        ON CONFLICT (user_id, lesson_id) DO UPDATE SET
+                            role_in_lesson = 'teacher',
+                            track_id = EXCLUDED.track_id
+                        """,
+                        teacher,
+                        lid,
+                        track_id,
+                    )
 
                     if offset_days < 0 and members:
                         for uid in members:
@@ -351,19 +508,37 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                                 status = "absent"
                             await conn.execute(
                                 """
-                                INSERT INTO app.attendance_marks (user_id, lesson_id, status, marked_by)
-                                VALUES ($1, $2, $3, $4)
+                                INSERT INTO app.attendance_marks (user_id, lesson_id, status, marked_by, subject_role, marked_by_role)
+                                VALUES ($1, $2, $3, $4, 'employee', 'hr')
                                 ON CONFLICT (user_id, lesson_id) DO UPDATE SET
                                     status = EXCLUDED.status,
                                     marked_by = EXCLUDED.marked_by,
+                                    subject_role = EXCLUDED.subject_role,
+                                    marked_by_role = EXCLUDED.marked_by_role,
                                     marked_at = now()
                                 """,
                                 uid,
                                 lid,
                                 status,
-                                teacher,
+                                core["hr"],
                             )
                             marks_touched += 1
+                        await conn.execute(
+                            """
+                            INSERT INTO app.attendance_marks (user_id, lesson_id, status, marked_by, subject_role, marked_by_role)
+                            VALUES ($1, $2, 'present', $3, 'teacher', 'hr')
+                            ON CONFLICT (user_id, lesson_id) DO UPDATE SET
+                                status = EXCLUDED.status,
+                                marked_by = EXCLUDED.marked_by,
+                                subject_role = EXCLUDED.subject_role,
+                                marked_by_role = EXCLUDED.marked_by_role,
+                                marked_at = now()
+                            """,
+                            teacher,
+                            lid,
+                            core["hr"],
+                        )
+                        marks_touched += 1
 
             async def insert_lesson(
                 *,
@@ -381,17 +556,23 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                 nonlocal lesson_idx, lessons_touched
                 lesson_idx += 1
                 lid = _lid(lesson_idx)
+                track_id = track_ids[lesson_idx % len(track_ids)]
+                slot_id = slot_ids[lesson_idx % len(slot_ids)]
                 base = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 starts = base + timedelta(days=day_offset, hours=start_h, minutes=start_m)
                 ends = base + timedelta(days=day_offset, hours=end_h, minutes=end_m)
                 await conn.execute(
                     """
                     INSERT INTO app.lessons (
-                        id, group_id, teacher_id, starts_at, ends_at, place, lesson_type, title
+                        id, group_id, reporting_group_id, track_id, slot_id,
+                        teacher_id, starts_at, ends_at, place, lesson_type, title
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                     ON CONFLICT (id) DO UPDATE SET
                         group_id = EXCLUDED.group_id,
+                        reporting_group_id = EXCLUDED.reporting_group_id,
+                        track_id = EXCLUDED.track_id,
+                        slot_id = EXCLUDED.slot_id,
                         teacher_id = EXCLUDED.teacher_id,
                         starts_at = EXCLUDED.starts_at,
                         ends_at = EXCLUDED.ends_at,
@@ -401,6 +582,8 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                     """,
                     lid,
                     group_id,
+                    track_id,
+                    slot_id,
                     teacher_id,
                     starts,
                     ends,
@@ -413,16 +596,32 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                 for uid in ids:
                     await conn.execute(
                         """
-                        INSERT INTO app.lesson_members (user_id, lesson_id)
-                        VALUES ($1, $2)
-                        ON CONFLICT DO NOTHING
+                        INSERT INTO app.lesson_members (user_id, lesson_id, role_in_lesson, track_id)
+                        VALUES ($1, $2, 'employee', $3)
+                        ON CONFLICT (user_id, lesson_id) DO UPDATE SET
+                            role_in_lesson = EXCLUDED.role_in_lesson,
+                            track_id = EXCLUDED.track_id
                         """,
                         uid,
                         lid,
+                        track_id,
                     )
+                await conn.execute(
+                    """
+                    INSERT INTO app.lesson_members (user_id, lesson_id, role_in_lesson, track_id)
+                    VALUES ($1, $2, 'teacher', $3)
+                    ON CONFLICT (user_id, lesson_id) DO UPDATE SET
+                        role_in_lesson = 'teacher',
+                        track_id = EXCLUDED.track_id
+                    """,
+                    teacher_id,
+                    lid,
+                    track_id,
+                )
                 lesson_records.append({
                     "id": lid,
                     "group_id": group_id,
+                    "track_id": track_id,
                     "teacher": teacher_id,
                     "members": ids,
                     "past": day_offset < 0,
@@ -504,11 +703,18 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                 resolved_at = now - timedelta(days=1) if status == "revoked" else None
                 await conn.execute(
                     """
+                    WITH target_role_row AS (
+                        SELECT r.code AS target_role
+                        FROM app.profiles p
+                        JOIN app.roles r ON r.id = p.role_id
+                        WHERE p.user_id = $2
+                    )
                     INSERT INTO app.strikes (
                         id, user_id, lesson_id, reason, strike_number, status,
-                        appeal_reason, appealed_at, resolved_by, resolved_at
+                        appeal_reason, appealed_at, resolved_by, resolved_at, target_role
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, target_role
+                    FROM target_role_row
                     ON CONFLICT (id) DO UPDATE SET
                         reason = EXCLUDED.reason,
                         status = EXCLUDED.status,
@@ -516,7 +722,8 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                         appeal_reason = EXCLUDED.appeal_reason,
                         appealed_at = EXCLUDED.appealed_at,
                         resolved_by = EXCLUDED.resolved_by,
-                        resolved_at = EXCLUDED.resolved_at
+                        resolved_at = EXCLUDED.resolved_at,
+                        target_role = EXCLUDED.target_role
                     """,
                     sid,
                     user_id,
@@ -584,10 +791,28 @@ async def seed_demo_data(pool: asyncpg.Pool) -> dict[str, Any]:
                     resolved_by=core["hr"],
                 )
 
+            # Teacher strikes do not block the teacher account.
+            await insert_strike(
+                core["teacher"],
+                strike_number=1,
+                reason="late",
+                lesson_id=past_lessons[0]["id"] if past_lessons else None,
+            )
+            await insert_strike(
+                core["teacher"],
+                strike_number=2,
+                reason="manual",
+                lesson_id=past_lessons[1]["id"] if len(past_lessons) > 1 else None,
+            )
+
             return {
                 "users_touched": users_touched,
                 "profiles_touched": profiles_touched,
                 "groups_touched": groups_touched,
+                "tracks_touched": tracks_touched,
+                "user_tracks_touched": user_tracks_touched,
+                "slots_touched": slots_touched,
+                "smu_assignments_touched": smu_touched,
                 "group_members_touched": members_touched,
                 "lessons_touched": lessons_touched,
                 "marks_touched": marks_touched,

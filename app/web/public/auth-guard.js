@@ -136,7 +136,6 @@
     if (!ok && appRole !== "admin") {
       ok = allowedRoles.some(function (role) {
         if (role === "hr") return keycloakRoles.indexOf("hr_manager") !== -1;
-        if (role === "teacher") return keycloakRoles.indexOf("teacher") !== -1;
         return false;
       });
     }
@@ -160,12 +159,12 @@
     var name = displayName(profile);
     var abbr = initials(name);
 
-    ["userAvatar", "hrAvatar", "teacherAvatar", "testAvatar"].forEach(function (id) {
+    ["userAvatar", "hrAvatar", "teacherAvatar", "testAvatar", "adminAvatar"].forEach(function (id) {
       var element = document.getElementById(id);
       if (element) element.textContent = abbr;
     });
 
-    ["userName", "hrName", "teacherName", "testUserName"].forEach(function (id) {
+    ["userName", "hrName", "teacherName", "testUserName", "adminName"].forEach(function (id) {
       var element = document.getElementById(id);
       if (element) element.textContent = name;
     });

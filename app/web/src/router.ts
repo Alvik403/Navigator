@@ -46,12 +46,10 @@ const routes: Record<string, RouteHandler> = {
   "/": renderLoginPage,
   "/login": () => navigate("/", true),
   "/login/hr": () => navigate("/", true),
-  "/login/teacher": () => navigate("/", true),
   "/max": renderMaxLogin,
   "/change-password": renderChangePasswordPage,
   "/callback": renderCallback,
   "/hr": () => renderProtectedPortal("hr"),
-  "/teacher": () => renderProtectedPortal("teacher"),
   "/admin": () => renderProtectedPortal("admin"),
   "/db-test": renderDbTest,
   "/logout": renderLogout,
@@ -79,7 +77,6 @@ function normalizePath(path: string): string {
 
 const DASHBOARD_STATIC_PATHS = new Set([
   "/hr-dashboard.html",
-  "/teacher-dashboard.html",
   "/admin-dashboard.html",
 ]);
 
@@ -148,7 +145,7 @@ async function renderLoginPage(): Promise<void> {
     renderAuthResult({
       variant: "error",
       title: "Нет доступа к системе",
-      message: "У вашей учётной записи нет системной роли admin, hr или teacher.",
+      message: "У вашей учётной записи нет системной роли admin или hr.",
       hint: "Обратитесь к системному администратору.",
     });
     return;
@@ -234,14 +231,6 @@ async function renderLoginFrame(errorMessage = ""): Promise<void> {
                 <span class="demo-account-body">
                   <span class="demo-account-name">HR-панель</span>
                   <span class="demo-account-creds"><kbd>hr.manager</kbd><span class="demo-account-sep">/</span><kbd>hr123456</kbd></span>
-                </span>
-                <span class="demo-account-cta">Заполнить</span>
-              </button>
-              <button type="button" class="demo-account-card demo-account-card--teacher demo-fill-btn" data-username="teacher.demo" data-password="teacher123456">
-                <span class="demo-account-badge">П</span>
-                <span class="demo-account-body">
-                  <span class="demo-account-name">Преподаватель</span>
-                  <span class="demo-account-creds"><kbd>teacher.demo</kbd><span class="demo-account-sep">/</span><kbd>teacher123456</kbd></span>
                 </span>
                 <span class="demo-account-cta">Заполнить</span>
               </button>
@@ -933,7 +922,7 @@ async function renderDbTest(): Promise<void> {
     <main class="db-shell">
       <section class="db-header">
         <div>
-          <p class="eyebrow">MAX RASS DB</p>
+          <p class="eyebrow">Навигатор · БД</p>
           <h1>Тест запросов к базе данных</h1>
           <p>Страница выполняет только read-only SELECT/WITH-запросы через API <code>/api/v1/db/query</code>.</p>
         </div>

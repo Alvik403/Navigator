@@ -14,11 +14,11 @@
       view: "tree",
     },
     {
-      id: "attendance_groups",
-      title: "Посещение по группам",
+      id: "attendance_tracks",
+      title: "Посещение по трекам",
       purpose: "Аналитика посещаемости",
-      sheetName: "Посещение групп",
-      fileName: "report_attendance_groups",
+      sheetName: "Посещение треков",
+      fileName: "report_attendance_tracks",
       view: "table",
     },
     {
@@ -30,19 +30,19 @@
       view: "tree",
     },
     {
-      id: "employee_courses",
-      title: "Курсы сотрудника",
-      purpose: "Группы по сотрудникам",
-      sheetName: "Курсы сотрудников",
-      fileName: "report_employee_courses",
+      id: "employee_tracks",
+      title: "Треки сотрудника",
+      purpose: "Треки по сотрудникам",
+      sheetName: "Треки сотрудников",
+      fileName: "report_employee_tracks",
       view: "tree",
     },
     {
-      id: "work_groups",
-      title: "Рабочие группы",
-      purpose: "Направления и состав",
-      sheetName: "Рабочие группы",
-      fileName: "report_work_groups",
+      id: "work_tracks",
+      title: "Треки обучения",
+      purpose: "Состав по трекам",
+      sheetName: "Треки",
+      fileName: "report_work_tracks",
       view: "tree",
     },
     {
@@ -195,19 +195,19 @@
   function buildEmployeesReport(ctx) {
     var D = ctx.D;
     var HrFields = ctx.HrFields;
-    var headers = ["Группа", "Фамилия", "Имя", "Отчество", "ID MAX", "Телефон", "Куратор", "Страйки", "Статус"];
+    var headers = ["Трек", "Фамилия", "Имя", "Отчество", "ID MAX", "Телефон", "Куратор", "Страйки", "Статус"];
     var buckets = {};
     D.usersByRole("student").forEach(function (u) {
-      var groups = D.studentGroups(u.id);
-      var keys = groups.length ? groups.map(function (g) { return g.name; }) : ["Без группы"];
+      var tracks = D.studentTracks(u.id);
+      var keys = tracks.length ? tracks.map(function (t) { return t.name; }) : ["Без трека"];
       keys.forEach(function (key) {
         if (!buckets[key]) buckets[key] = [];
         if (!buckets[key].some(function (x) { return x.id === u.id; })) buckets[key].push(u);
       });
     });
     var tree = Object.keys(buckets).sort(function (a, b) {
-      if (a === "Без группы") return 1;
-      if (b === "Без группы") return -1;
+      if (a === "Без трека") return 1;
+      if (b === "Без трека") return -1;
       return a.localeCompare(b, "ru");
     }).map(function (name) {
       var list = buckets[name];
@@ -255,24 +255,23 @@
     return { view: "tree", tree: tree, headers: headers, rows: rows };
   }
 
-  function buildEmployeeCoursesReport(ctx) {
+  function buildEmployeeTracksReport(ctx) {
     var D = ctx.D;
-    var headers = ["Сотрудник", "Направление", "Рабочая группа", "Статус"];
+    var headers = ["Сотрудник", "Трек", "Статус"];
     var tree = D.usersByRole("student").map(function (u) {
-      var groups = D.studentGroups(u.id);
+      var tracks = D.studentTracks(u.id);
       return {
         id: "emp-" + u.id,
         title: D.fullName(u),
-        badge: groups.length ? groups.length + " групп" : "без групп",
-        children: groups.length ? groups.map(function (g) {
-          var course = D.courseOfGroup(g.id);
+        badge: tracks.length ? tracks.length + " треков" : "без треков",
+        children: tracks.length ? tracks.map(function (t) {
           return {
-            title: g.name,
-            tags: [course ? course.name : "—", STATUS_RU[u.status] || u.status],
-            fields: [{ label: "Направление", value: course ? course.name : "—" }],
+            title: t.name,
+            tags: [STATUS_RU[u.status] || u.status],
+            fields: [{ label: "Код", value: t.code || "—" }],
           };
         }) : [{
-          title: "Не назначен в группу",
+          title: "Не назначен на трек",
           tags: [STATUS_RU[u.status] || u.status],
           fields: [],
         }],
@@ -284,72 +283,52 @@
       branch.children.forEach(function (child) {
         rows.push([
           branch.title,
-          (child.fields && child.fields[0] && child.fields[0].value) || (child.tags && child.tags[0]) || "—",
           child.title,
-          (child.tags && child.tags[1]) || "",
+          (child.tags && child.tags[0]) || "",
         ]);
       });
     });
     return { view: "tree", tree: tree, headers: headers, rows: rows };
   }
 
-  function buildWorkGroupsReport(ctx) {
+  function buildWorkTracksReport(ctx) {
     var D = ctx.D;
     var HrFields = ctx.HrFields;
-    var hr = ctx.hr;
-    var headers = ["Направление", "Группа", "Участник", "Статус", "Телефон"];
-    var byCourse = {};
-    D.allWorkingGroups().filter(function (g) { return g.id_hr === hr.id; }).forEach(function (g) {
-      var course = D.courseOfGroup(g.id);
-      var key = course ? course.name : "Без направления";
-      if (!byCourse[key]) byCourse[key] = [];
-      byCourse[key].push(g);
-    });
-    var tree = Object.keys(byCourse).sort(function (a, b) { return a.localeCompare(b, "ru"); }).map(function (courseName) {
-      var groups = byCourse[courseName];
-      var totalMembers = groups.reduce(function (sum, g) { return sum + D.groupStudents(g.id).length; }, 0);
+    var headers = ["Трек", "Участник", "Статус", "Телефон"];
+    var tracks = D.tracks();
+    var tree = tracks.map(function (t) {
+      var students = (D.trackAssignments(t.id) || [])
+        .filter(function (a) { return (a.status || "active") === "active"; })
+        .map(function (a) { return D.userById(a.user_id); })
+        .filter(Boolean);
       return {
-        id: "dir-" + courseName,
-        title: courseName,
-        badge: groups.length + " групп · " + totalMembers + " чел.",
-        children: groups.map(function (g) {
-          var students = D.groupStudents(g.id);
-          var st = g.status === "forming" ? "формируется" : g.status === "active" ? "активна" : g.status;
+        id: "tr-" + t.id,
+        title: t.name,
+        badge: students.length + " уч.",
+        tags: [t.code || ""],
+        children: students.length ? students.map(function (u) {
           return {
-            id: "wg-" + g.id,
-            branch: true,
-            title: g.name,
-            badge: students.length + " уч.",
-            tags: [st],
-            children: students.length ? students.map(function (u) {
-              return {
-                title: D.fullName(u),
-                tags: [STATUS_RU[u.status] || u.status],
-                fields: [{ label: "Телефон", value: fmtPhone(u.phone, HrFields) }],
-                _user: u,
-              };
-            }) : [{ title: "Нет участников", tags: [], fields: [], _empty: true }],
+            title: D.fullName(u),
+            tags: [STATUS_RU[u.status] || u.status],
+            fields: [{ label: "Телефон", value: fmtPhone(u.phone, HrFields) }],
+            _user: u,
           };
-        }),
+        }) : [{ title: "Нет участников", tags: [], fields: [], _empty: true }],
       };
     });
     var rows = [];
     tree.forEach(function (branch) {
-      branch.children.forEach(function (groupNode) {
-        (groupNode.children || []).forEach(function (child) {
-          if (child._empty) {
-            rows.push([branch.title, groupNode.title, "—", "—", "—"]);
-            return;
-          }
-          var u = child._user;
-          rows.push([
-            branch.title,
-            groupNode.title,
-            child.title,
-            (child.tags && child.tags[0]) || "",
-            child.fields && child.fields[0] ? child.fields[0].value : "—",
-          ]);
-        });
+      (branch.children || []).forEach(function (child) {
+        if (child._empty) {
+          rows.push([branch.title, "—", "—", "—"]);
+          return;
+        }
+        rows.push([
+          branch.title,
+          child.title,
+          (child.tags && child.tags[0]) || "",
+          child.fields && child.fields[0] ? child.fields[0].value : "—",
+        ]);
       });
     });
     return { view: "tree", tree: tree, headers: headers, rows: rows };
@@ -358,7 +337,7 @@
   function buildCuratorsReport(ctx) {
     var D = ctx.D;
     var HrFields = ctx.HrFields;
-    var headers = ["Куратор", "Подопечный", "Телефон", "Группы"];
+    var headers = ["Куратор", "Подопечный", "Телефон", "Треки"];
     var tree = D.usersByRole("curator").map(function (c) {
       var wards = D.usersByRole("student").filter(function (u) { return u.id_curator === c.id; });
       return {
@@ -367,13 +346,13 @@
         badge: wards.length ? wards.length + " подопечных" : "нет подопечных",
         meta: fmtPhone(c.phone, HrFields),
         children: wards.length ? wards.map(function (u) {
-          var groups = D.studentGroups(u.id).map(function (g) { return g.name; }).join(", ");
+          var trackNames = D.studentTracks(u.id).map(function (t) { return t.name; }).join(", ");
           return {
             title: D.fullName(u),
             tags: [u.phone ? "есть телефон" : "без телефона"],
             fields: [
               { label: "Телефон", value: fmtPhone(u.phone, HrFields) },
-              { label: "Группы", value: groups || "—" },
+              { label: "Треки", value: trackNames || "—" },
             ],
           };
         }) : [{ title: "Нет подопечных", tags: [], fields: [], _empty: true }],
@@ -395,14 +374,14 @@
     return { view: "tree", tree: tree, headers: headers, rows: rows };
   }
 
-  async function buildAttendanceGroupsReport(ctx) {
-    var data = await ctx.api.get("/hr/reports/attendance/groups");
+  async function buildAttendanceTracksReport(ctx) {
+    var data = await ctx.api.get("/hr/reports/attendance/tracks");
     var items = data.items || [];
-    var headers = ["Группа", "Всего", "Был", "Опоздал", "Не был", "%"];
+    var headers = ["Трек", "Всего", "Был", "Опоздал", "Не был", "%"];
     var rows = items.map(function (r) {
       var attended = (r.present_count || 0) + (r.late_count || 0);
       return [
-        r.group_name || "—",
+        r.track_name || r.group_name || "—",
         String(r.marks_total || 0),
         String(r.present_count || 0),
         String(r.late_count || 0),
@@ -424,18 +403,18 @@
   async function buildStrikesReport(ctx) {
     var data = await ctx.api.get("/hr/strikes");
     var items = data.items || [];
-    var headers = ["ФИО", "Группа", "№", "Статус", "Причина", "Дата"];
-    var byGroup = {};
+    var headers = ["ФИО", "Трек", "№", "Статус", "Причина", "Дата"];
+    var byTrack = {};
     items.forEach(function (s) {
-      var key = s.group_name || "Без группы";
-      if (!byGroup[key]) byGroup[key] = [];
-      byGroup[key].push(s);
+      var key = s.track_name || s.group_name || "Без трека";
+      if (!byTrack[key]) byTrack[key] = [];
+      byTrack[key].push(s);
     });
-    var tree = Object.keys(byGroup).sort(function (a, b) { return a.localeCompare(b, "ru"); }).map(function (groupName) {
-      var list = byGroup[groupName];
+    var tree = Object.keys(byTrack).sort(function (a, b) { return a.localeCompare(b, "ru"); }).map(function (trackName) {
+      var list = byTrack[trackName];
       return {
-        id: "str-" + groupName,
-        title: groupName,
+        id: "str-" + trackName,
+        title: trackName,
         badge: list.length + " страйков",
         children: list.map(function (s) {
           return {
@@ -452,7 +431,7 @@
     var rows = items.map(function (s) {
       return [
         fmtName(s),
-        s.group_name || "—",
+        s.track_name || s.group_name || "—",
         String(s.strike_number || ""),
         STRIKE_STATUS_RU[s.status] || s.status,
         s.reason || "",
@@ -468,10 +447,10 @@
 
     var payload;
     if (reportId === "employees") payload = buildEmployeesReport(ctx);
-    else if (reportId === "employee_courses") payload = buildEmployeeCoursesReport(ctx);
-    else if (reportId === "work_groups") payload = buildWorkGroupsReport(ctx);
+    else if (reportId === "employee_tracks") payload = buildEmployeeTracksReport(ctx);
+    else if (reportId === "work_tracks") payload = buildWorkTracksReport(ctx);
     else if (reportId === "curators") payload = buildCuratorsReport(ctx);
-    else if (reportId === "attendance_groups") payload = await buildAttendanceGroupsReport(ctx);
+    else if (reportId === "attendance_tracks") payload = await buildAttendanceTracksReport(ctx);
     else if (reportId === "strikes") payload = await buildStrikesReport(ctx);
     else throw new Error("Отчёт не реализован");
 

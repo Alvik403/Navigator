@@ -1,0 +1,324 @@
+/* Навигатор — треки, СМУ, формирование */
+
+.track-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+#trackDetailHost {
+  min-width: 0;
+}
+
+.track-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: #fafbfc;
+  padding: 10px;
+  max-height: 640px;
+  overflow-y: auto;
+}
+
+.track-list-item {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border: none;
+  border-radius: var(--control-radius);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.track-list-item:hover { background: #eef2f7; }
+.track-list-item.active { background: var(--primary); color: #fff; }
+.track-list-item .track-code { font-size: 11px; opacity: 0.75; margin-top: 2px; }
+
+.track-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.inline-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.inline-form-grid label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.inline-form-grid input,
+.inline-form-grid select {
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--control-px);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  font: inherit;
+  font-size: var(--control-font);
+}
+
+.formation-preview {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed #bfdbfe;
+  border-radius: var(--control-radius);
+  background: #f8fbff;
+  font-size: 13px;
+}
+
+.legacy-banner {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: var(--control-radius);
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  font-size: 13px;
+}
+
+.sidebar-group.legacy { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
+.sidebar-group.legacy .sidebar-group-title { color: #9a3412; }
+
+@media (max-width: 960px) {
+  .track-layout { grid-template-columns: 1fr; }
+}
+
+.track-detail-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: 16px 18px;
+  min-width: 0;
+}
+
+.track-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.track-summary-chips .stat-chip {
+  padding: 6px 10px;
+  border-radius: var(--control-radius);
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.track-summary-chips .stat-chip strong {
+  color: var(--text);
+  font-size: 14px;
+  margin-right: 4px;
+}
+
+.track-section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.track-section-tab {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.track-section-tab:hover { background: #f8fafc; }
+.track-section-tab.active {
+  background: var(--primary-soft);
+  border-color: #bfdbfe;
+  color: var(--primary-dark);
+}
+
+.track-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.track-roster-filters {
+  margin-bottom: 12px;
+}
+
+#trackSectionEmployees,
+#trackSectionInstructors {
+  min-width: 0;
+}
+
+.track-section-title {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+#trackSectionSettings .formation-settings-grid {
+  margin-top: 4px;
+}
+
+#trackFormationSettingsHost .empty {
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--control-radius);
+  background: #fafbfc;
+}
+
+.track-filters-bar {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.4fr) repeat(3, minmax(120px, 0.9fr)) auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: #f8fafc;
+}
+
+.track-filters-bar--assign {
+  grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.2fr) auto auto;
+}
+
+.track-filters-bar .track-people-search {
+  width: 100%;
+  max-width: none !important;
+}
+
+.track-filters-bar .ui-field {
+  margin: 0;
+  min-width: 0;
+}
+
+.track-filters-bar .ui-dropdown,
+.track-filters-bar .ui-search-select {
+  width: 100%;
+}
+
+.track-filters-bar .ui-label {
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.track-filter-count {
+  align-self: center;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-bottom: 2px;
+}
+
+.track-assign-field {
+  min-width: 0;
+}
+
+.track-assign-field .ui-field {
+  margin: 0;
+}
+
+.track-assign-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: #f8fafc;
+}
+
+.track-assign-bar .track-assign-field {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.track-assign-bar .ui-search-select,
+.track-assign-bar .ui-dropdown {
+  width: 100%;
+}
+
+.track-assign-bar .btn {
+  flex-shrink: 0;
+  height: var(--control-h);
+}
+
+.track-detail-hint {
+  margin: 10px 0 0;
+}
+
+#trackEmployeesTableHost .table-wrap {
+  overflow-x: auto;
+}
+
+.track-people-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.track-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--control-radius);
+  border: 1px solid var(--border);
+  background: #fafbfc;
+}
+
+.track-row-info { min-width: 0; flex: 1; }
+.track-row-name { font-weight: 600; font-size: 14px; }
+.track-row-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.track-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+@media (max-width: 1100px) {
+  .track-filters-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .track-filters-bar .track-people-search {
+    grid-column: 1 / -1;
+  }
+
+  .track-filters-bar .track-filter-count {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+
+  .track-filters-bar--assign {
+    grid-template-columns: 1fr auto;
+  }
+
+  .track-filters-bar--assign .track-assign-field {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .track-filters-bar,
+  .track-filters-bar--assign {
+    grid-template-columns: 1fr;
+  }
+}

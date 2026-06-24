@@ -82,6 +82,10 @@ services:
       LESSON_REMINDER_POLL_SEC: "60"
       LESSON_REMINDER_WINDOW_MIN: "2"
       LESSON_REMINDER_ENABLED: "true"
+      FORMATION_AUTO_ENABLED: "true"
+      FORMATION_AUTO_POLL_SEC: "3600"
+      FORMATION_DAYS_AHEAD: "1"
+      FORMATION_AUTO_HOUR_LOCAL: "18"
     ports:
       - "8025:8025"
     healthcheck:

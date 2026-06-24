@@ -16,8 +16,8 @@ from domain import (
     get_profile_by_max_id,
     get_profile_by_phone,
     link_profile_max_id,
+    list_curator_subordinates,
     list_employee_upcoming_lessons,
-    list_user_groups,
     list_user_strikes,
     submit_user_strike_appeal,
 )
@@ -44,12 +44,11 @@ ROLE_LABELS = {
     "curator": "Куратор",
 }
 
-AUTH_APP_ROLES = frozenset({"hr", "teacher", "admin"})
+AUTH_APP_ROLES = frozenset({"hr", "admin"})
 EMPLOYEE_ROLE = "employee"
 
 KEYCLOAK_CREDENTIALS: dict[str, str] = {
     "hr.manager": "hr123456",
-    "teacher.demo": "teacher123456",
     "admin": "admin123456",
 }
 
@@ -65,12 +64,6 @@ MAX_USER_MAP: dict[str, dict[str, str]] = {
         "password": "hr123456",
         "label": "HR",
         "role": "hr_manager",
-    },
-    "1002": {
-        "username": "teacher.demo",
-        "password": "teacher123456",
-        "label": "Преподаватель",
-        "role": "teacher",
     },
 }
 
@@ -162,14 +155,14 @@ async def resolve_bot_account(max_user_id: str) -> BotAccount | None:
                 keycloak_password=kc_password,
             )
 
-    # Legacy map only when profile is absent in DB (dev fallback for HR/teacher login).
+    # Legacy map only when profile is absent in DB (dev fallback for HR login).
     legacy = MAX_USER_MAP.get(max_user_id)
-    if legacy and legacy.get("role") in {"hr_manager", "teacher", "admin"}:
+    if legacy and legacy.get("role") in {"hr_manager", "admin"}:
         logger.debug("MAX legacy map used for max_user_id=%s role=%s", max_user_id, legacy.get("role"))
         return BotAccount(
             max_user_id=max_user_id,
             app_user_id=KC_USERNAME_TO_APP_USER.get(legacy["username"], ""),
-            role_code={"hr_manager": "hr", "teacher": "teacher", "admin": "admin"}.get(
+            role_code={"hr_manager": "hr", "admin": "admin"}.get(
                 legacy["role"], legacy["role"]
             ),
             role_name=legacy.get("label", legacy["role"]),
@@ -218,7 +211,7 @@ def _clipboard_max_id_button(max_user_id: str) -> dict[str, str]:
 
 def build_unknown_user_message(max_user_id: str) -> str:
     return (
-        "Вы не найдены в системе MAX RASS.\n\n"
+        "Вы не найдены в системе Навигатор.\n\n"
         f"Ваш MAX ID:\n{max_user_id}\n\n"
         "Скопируйте ID кнопкой ниже и передайте его HR при регистрации.\n\n"
         "Если HR уже добавил вас в систему, нажмите «Поделиться номером» — "
@@ -229,7 +222,7 @@ def build_unknown_user_message(max_user_id: str) -> str:
 def build_phone_not_found_message(max_user_id: str) -> str:
     contact_label = HR_CONTACT_NAME or "HR"
     parts = [
-        "Номер не найден в системе MAX RASS.",
+        "Номер не найден в системе Навигатор.",
         "",
         "Мы не нашли профиль с этим номером телефона.",
         f"Свяжитесь с {contact_label} — вас добавят в систему или проверят номер.",
@@ -283,7 +276,7 @@ def request_contact_keyboard(max_user_id: str = "") -> list[list[dict[str, str]]
 def employee_main_keyboard() -> list[list[dict[str, str]]]:
     return [
         [
-            {"type": "callback", "text": "Мои группы", "payload": "emp:groups"},
+            {"type": "callback", "text": "Мои треки", "payload": "emp:tracks"},
             {"type": "callback", "text": "Прогресс", "payload": "emp:progress"},
         ],
         [
@@ -294,6 +287,13 @@ def employee_main_keyboard() -> list[list[dict[str, str]]]:
             {"type": "callback", "text": "Главное меню", "payload": "emp:menu"},
         ],
     ]
+
+
+def user_main_keyboard(role_code: str) -> list[list[dict[str, str]]]:
+    rows = employee_main_keyboard()
+    if role_code == "curator":
+        rows.insert(2, [{"type": "callback", "text": "Мои подопечные", "payload": "emp:subordinates"}])
+    return rows
 
 
 async def bot_reply(
@@ -372,17 +372,18 @@ async def handle_contact_link(
 
     await bot_reply(
         target,
-        f"Аккаунт привязан: {account.display_name}.\n\nДобро пожаловать в MAX RASS!",
+        f"Аккаунт привязан: {account.display_name}.\n\nДобро пожаловать в Навигатор!",
     )
     await route_welcome(target, account)
     return {"status": "linked_by_phone", "max_user_id": max_user_id, "role": account.role_code}
 
 
 async def send_employee_menu(target: MaxReplyTarget, account: BotAccount) -> None:
-    greeting = f"Здравствуйте, {account.display_name}!\n\nMAX RASS — ваш личный кабинет ученика."
+    role_label = ROLE_LABELS.get(account.role_code, account.role_name)
+    greeting = f"Здравствуйте, {account.display_name}!\n\nНавигатор — ваш личный кабинет. Роль: {role_label}."
     if account.strike_count:
         greeting += f"\n\n⚠ Активных страйков: {account.strike_count} из 3."
-    await bot_reply(target, greeting, buttons=employee_main_keyboard())
+    await bot_reply(target, greeting, buttons=user_main_keyboard(account.role_code))
 
 
 async def send_staff_welcome(target: MaxReplyTarget, account: BotAccount) -> None:
@@ -402,47 +403,37 @@ async def send_staff_welcome(target: MaxReplyTarget, account: BotAccount) -> Non
 
 
 async def send_curator_welcome(target: MaxReplyTarget, account: BotAccount) -> None:
-    await bot_reply(
-        target,
-        f"Здравствуйте, {account.display_name}!\n\n"
-        "Вы зарегистрированы как куратор. Уведомления о подопечных приходят в этот чат.\n\n"
-        "Для управления учениками используйте HR-портал или обратитесь к HR.",
-    )
+    await send_employee_menu(target, account)
 
 
 async def route_welcome(target: MaxReplyTarget, account: BotAccount) -> None:
     if account.status != "active":
         await bot_reply(target, INACTIVE_USER_MESSAGE)
         return
-    if account.is_employee:
+    if account.role_code in {"employee", "teacher", "curator"}:
         await send_employee_menu(target, account)
-    elif account.role_code == "curator":
-        await send_curator_welcome(target, account)
     elif account.role_code in AUTH_APP_ROLES:
         await send_staff_welcome(target, account)
     else:
         await send_unknown_user_message(target, account.max_user_id)
 
 
-async def format_groups_message(user_id: str) -> str:
-    groups = await list_user_groups(user_id)
-    if not groups:
-        return "Вы пока не состоите ни в одной группе.\n\nОбратитесь к HR для назначения."
-    lines = [f"Ваши группы ({len(groups)}):"]
-    for group in groups:
-        status = group.get("status") or "active"
-        hr = group.get("hr_name")
-        line = f"• {group.get('name', '—')} — {status}"
-        if hr:
-            line += f" (HR: {hr})"
-        lines.append(line)
+async def format_tracks_message(user_id: str) -> str:
+    rows = await get_employee_progress(user_id)
+    if not rows:
+        return "Вы пока не назначены ни на один трек.\n\nОбратитесь к HR для назначения."
+    lines = [f"Ваши треки ({len(rows)}):"]
+    for row in rows:
+        status = row.get("track_status") or "active"
+        title = row.get("track_name") or "—"
+        lines.append(f"• {title} — {status}")
     return "\n".join(lines)
 
 
 async def format_progress_message(user_id: str) -> str:
     rows = await get_employee_progress(user_id)
     if not rows:
-        return "Нет данных о прогрессе.\n\nВозможно, вы ещё не добавлены в группу."
+        return "Нет данных о прогрессе.\n\nВозможно, вы ещё не добавлены на трек."
     lines = ["Ваш прогресс:"]
     for row in rows:
         past = int(row.get("lessons_past") or 0)
@@ -451,11 +442,15 @@ async def format_progress_message(user_id: str) -> str:
         absent = int(row.get("absent_count") or 0)
         upcoming = int(row.get("lessons_upcoming") or 0)
         attended = present + late
+        title = row.get("track_name") or row.get("group_name") or "—"
+        required = row.get("practice_required")
+        required_part = f"\n  План практик: {required}" if required is not None else ""
         lines.append(
-            f"\n📁 {row.get('group_name', '—')}\n"
+            f"\n📁 {title}\n"
             f"  ✓ Посещено: {attended} (из {past} прошедших)\n"
             f"  ✗ Пропуски: {absent}\n"
             f"  ○ Впереди: {upcoming} занятий"
+            f"{required_part}"
         )
     return "\n".join(lines)
 
@@ -468,14 +463,29 @@ async def format_schedule_message(user_id: str) -> str:
     for lesson in lessons:
         title = lesson.get("lesson_title") or lesson.get("title") or "Занятие"
         place = lesson.get("place") or "—"
-        group = lesson.get("group_name") or "—"
+        track = lesson.get("track_name") or lesson.get("group_name") or "—"
+        slot = lesson.get("slot_name") or lesson.get("slot_code")
         teacher = f"{lesson.get('teacher_last_name', '')} {lesson.get('teacher_first_name', '')}".strip()
+        lesson_line = f"  {title} · {track}" + (f" · слот {slot}" if slot else "")
         lines.append(
             f"\n• {_format_dt(lesson.get('starts_at'))}\n"
-            f"  {title} · {group}\n"
+            f"{lesson_line}\n"
             f"  {place}"
             + (f"\n  Преподаватель: {teacher}" if teacher else "")
         )
+    return "\n".join(lines)
+
+
+async def format_subordinates_message(curator_user_id: str) -> str:
+    rows = await list_curator_subordinates(curator_user_id)
+    if not rows:
+        return "У вас пока нет подопечных."
+    lines = [f"Мои подопечные ({len(rows)}):"]
+    for row in rows:
+        name = _profile_name(row)
+        strikes = int(row.get("strike_count") or 0)
+        phone = row.get("phone") or "нет телефона"
+        lines.append(f"\n• {name}\n  Телефон: {phone}\n  Активных страйков: {strikes}")
     return "\n".join(lines)
 
 
@@ -483,7 +493,7 @@ async def format_schedule_message(user_id: str) -> str:
 async def format_strikes_message(user_id: str) -> tuple[str, list[list[dict[str, str]]] | None]:
     strikes = await list_user_strikes(user_id)
     if not strikes:
-        return "У вас нет страйков.", employee_main_keyboard()
+        return "У вас нет страйков.", user_main_keyboard("employee")
 
     lines = ["Ваши страйки:"]
     appeal_buttons: list[list[dict[str, str]]] = []
@@ -528,24 +538,29 @@ async def handle_employee_action(
         await send_employee_menu(target, account)
         return
 
-    if action == "groups":
-        text = await format_groups_message(account.app_user_id)
-        await bot_reply(target, text, buttons=employee_main_keyboard())
+    if action in {"groups", "tracks"}:
+        text = await format_tracks_message(account.app_user_id)
+        await bot_reply(target, text, buttons=user_main_keyboard(account.role_code))
         return
 
     if action == "progress":
         text = await format_progress_message(account.app_user_id)
-        await bot_reply(target, text, buttons=employee_main_keyboard())
+        await bot_reply(target, text, buttons=user_main_keyboard(account.role_code))
         return
 
     if action == "schedule":
         text = await format_schedule_message(account.app_user_id)
-        await bot_reply(target, text, buttons=employee_main_keyboard())
+        await bot_reply(target, text, buttons=user_main_keyboard(account.role_code))
         return
 
     if action == "strikes":
         text, buttons = await format_strikes_message(account.app_user_id)
         await bot_reply(target, text, buttons=buttons)
+        return
+
+    if action == "subordinates" and account.role_code == "curator":
+        text = await format_subordinates_message(account.app_user_id)
+        await bot_reply(target, text, buttons=user_main_keyboard(account.role_code))
         return
 
     if action == "appeal" and strike_id:
@@ -595,8 +610,8 @@ async def handle_employee_text(
     if command in {"/start", "/menu", "меню", "start", "/help", "help", "помощь"}:
         await send_employee_menu(target, account)
         return
-    if command in {"/groups", "группы"}:
-        await handle_employee_action("groups", target, account)
+    if command in {"/tracks", "/groups", "треки", "группы"}:
+        await handle_employee_action("tracks", target, account)
         return
     if command in {"/progress", "прогресс"}:
         await handle_employee_action("progress", target, account)
@@ -607,12 +622,15 @@ async def handle_employee_text(
     if command in {"/strikes", "страйки"}:
         await handle_employee_action("strikes", target, account)
         return
+    if command in {"/subordinates", "подопечные"} and account.role_code == "curator":
+        await handle_employee_action("subordinates", target, account)
+        return
 
     await bot_reply(
         target,
         "Не понял команду. Используйте кнопки меню или:\n"
-        "/groups · /progress · /schedule · /strikes · /menu",
-        buttons=employee_main_keyboard(),
+        "/tracks · /progress · /schedule · /strikes · /menu",
+        buttons=user_main_keyboard(account.role_code),
     )
 
 
@@ -677,7 +695,7 @@ async def handle_message_created(event: dict[str, Any]) -> dict[str, str]:
             )
         return {"status": "unknown_user", "max_user_id": max_user_id}
 
-    if not account.is_employee:
+    if account.role_code not in {"employee", "teacher", "curator"}:
         text = extract_message_text(event)
         if text and text.strip().lower().split()[0] in {"/start", "start", "меню", "/menu"}:
             await route_welcome(target, account)
@@ -708,8 +726,8 @@ async def handle_employee_callback(
             await send_unknown_user_message(target, max_user_id)
         return {"status": "unknown_user"}
 
-    if not account.is_employee:
-        await answer_max_callback(callback_id, "Доступно только ученикам")
+    if account.role_code not in {"employee", "teacher", "curator"}:
+        await answer_max_callback(callback_id, "Доступно только пользователям MAX")
         return {"status": "forbidden"}
 
     parts = payload_text.split(":", 2)
@@ -726,6 +744,7 @@ async def handle_employee_callback(
         "schedule": "Расписание",
         "strikes": "Страйки",
         "appeal": "Апелляция",
+        "subordinates": "Подопечные",
     }
     await answer_max_callback(callback_id, labels.get(action, "Готово"))
     return {"status": "employee_callback", "action": action}

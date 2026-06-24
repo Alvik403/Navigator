@@ -3,94 +3,587 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Администратор — MAX RASS</title>
+  <title>Администратор — Навигатор</title>
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="icons.css">
+  <link rel="stylesheet" href="components.css">
   <link rel="stylesheet" href="dashboard.css">
-  <script src="/auth-guard.js"></script>
+  <link rel="stylesheet" href="admin-panel.css">
+  <link rel="stylesheet" href="ui-components.css">
+  <script src="auth-guard.js"></script>
   <script>window.MaxRassAuth.requireSystemRoles(["admin"], "/");</script>
-  <style>
-    .admin-soon-shell {
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 24px 16px;
-      background:
-        radial-gradient(circle at 0% 0%, rgba(124, 58, 237, 0.1), transparent 42%),
-        radial-gradient(circle at 100% 100%, rgba(37, 99, 235, 0.08), transparent 38%),
-        var(--bg, #f4f7fb);
-    }
-    .admin-soon-card {
-      width: min(520px, 100%);
-      padding: 40px 32px;
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      background: var(--surface);
-      box-shadow: var(--shadow-lg, 0 20px 60px rgba(15, 23, 42, 0.08));
-      text-align: center;
-    }
-    .admin-soon-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 16px;
-      padding: 6px 12px;
-      border-radius: 999px;
-      background: #fef3c7;
-      color: #92400e;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-    }
-    .admin-soon-card h1 {
-      margin: 0 0 12px;
-      font-size: 26px;
-      letter-spacing: -0.02em;
-    }
-    .admin-soon-card p {
-      margin: 0 0 28px;
-      color: var(--muted);
-      font-size: 15px;
-      line-height: 1.6;
-    }
-    .admin-soon-actions {
-      display: grid;
-      gap: 10px;
-    }
-    .admin-soon-actions .btn { width: 100%; justify-content: center; }
-    .admin-soon-note {
-      margin-top: 24px;
-      padding-top: 20px;
-      border-top: 1px solid var(--border);
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.55;
-      text-align: left;
-    }
-    .admin-soon-note strong { color: var(--text); }
-  </style>
 </head>
 <body>
-  <main class="admin-soon-shell">
-    <section class="admin-soon-card">
-      <div class="admin-soon-badge">В разработке</div>
-      <h1>Панель администратора</h1>
-      <p>
-        Раздел находится в разработке и будет доступен позже.
-        Сейчас управление пользователями и группами выполняется через HR-панель.
-      </p>
-      <div class="admin-soon-actions">
-        <a class="btn" href="/hr-dashboard.html">Перейти в HR-панель</a>
-        <a class="btn secondary" href="/">На главную</a>
-        <a class="btn secondary" href="/logout">Выйти</a>
+<div class="toast-top" id="toastTop"></div>
+
+<div class="page" id="appRoot" hidden>
+  <header class="header">
+    <div>
+      <h1>Админ-панель</h1>
+      <p>Пользователи приложения и Keycloak</p>
+    </div>
+    <div class="user">
+      <div class="avatar admin" id="adminAvatar">A</div>
+      <div><span id="adminName">—</span><br><span>Администратор</span></div>
+      <a class="logout" href="/hr-dashboard.html">HR-панель</a>
+      <a class="logout" href="/logout">Выйти</a>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <nav class="admin-tabs" id="adminTabs">
+      <button type="button" class="admin-tab active" data-view="users">Пользователи</button>
+      <button type="button" class="admin-tab" data-view="audit">Журнал действий</button>
+    </nav>
+
+    <div id="usersView">
+    <section class="card admin-toolbar-card">
+      <div class="admin-toolbar">
+        <div class="admin-toolbar-filters">
+          <div class="ui-field admin-filter-field">
+            <label class="ui-label" for="roleFilter">Роль</label>
+            <select id="roleFilter">
+              <option value="">Все роли</option>
+            </select>
+          </div>
+          <div class="ui-field admin-filter-field admin-search-field">
+            <label class="ui-label" for="searchInput">Поиск</label>
+            <input id="searchInput" type="search" placeholder="ФИО, телефон, MAX ID, логин KC">
+          </div>
+        </div>
+        <div class="admin-toolbar-actions">
+          <button type="button" class="btn secondary" id="refreshBtn">Обновить</button>
+          <button type="button" class="btn" id="createBtn">+ Пользователь</button>
+        </div>
       </div>
-      <div class="admin-soon-note">
-        <strong>Как назначить HR сейчас:</strong><br>
-        1. Keycloak → пользователь → роль <code>hr_manager</code><br>
-        2. В БД — профиль с ролью <code>hr</code> и привязка логина Keycloak<br>
-        3. Укажите ID MAX для входа через бота
+      <div class="admin-stats" id="statsRow"></div>
+    </section>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table class="entity-table admin-users-table">
+          <thead>
+            <tr>
+              <th>ФИО</th>
+              <th>Роль</th>
+              <th>ID MAX</th>
+              <th>Телефон</th>
+              <th>Keycloak</th>
+              <th>Статус</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="usersBody">
+            <tr><td colspan="7" class="empty">Загрузка…</td></tr>
+          </tbody>
+        </table>
       </div>
     </section>
+    </div>
+
+    <div id="auditView" hidden>
+      <section class="card admin-toolbar-card">
+        <div class="admin-toolbar">
+          <div class="admin-toolbar-filters">
+            <div class="ui-field admin-filter-field">
+              <label class="ui-label" for="auditActorFilter">Пользователь</label>
+              <select id="auditActorFilter">
+                <option value="">Все</option>
+              </select>
+            </div>
+            <div class="ui-field admin-filter-field">
+              <label class="ui-label" for="auditActionFilter">Действие</label>
+              <select id="auditActionFilter">
+                <option value="">Все</option>
+              </select>
+            </div>
+            <div class="ui-field admin-filter-field">
+              <label class="ui-label" for="auditEntityFilter">Объект</label>
+              <select id="auditEntityFilter">
+                <option value="">Все</option>
+              </select>
+            </div>
+            <div class="ui-field admin-filter-field">
+              <label class="ui-label" for="auditRestorableFilter">&nbsp;</label>
+              <label style="display:flex;align-items:center;gap:8px;height:var(--control-h);font-size:13px">
+                <input type="checkbox" id="auditRestorableFilter"> Только восстановимые
+              </label>
+            </div>
+          </div>
+          <div class="admin-toolbar-actions">
+            <button type="button" class="btn secondary" id="auditRefreshBtn">Обновить</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="table-wrap">
+          <table class="entity-table admin-audit-table">
+            <thead>
+              <tr>
+                <th>Время</th>
+                <th>Пользователь</th>
+                <th>Действие</th>
+                <th>Объект</th>
+                <th>Элемент</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="auditBody">
+              <tr><td colspan="6" class="empty">Загрузка…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   </main>
+</div>
+
+<div class="overlay" id="userModal">
+  <div class="modal narrow admin-modal">
+    <div class="modal-header">
+      <div>
+        <h3 id="modalTitle">Пользователь</h3>
+      </div>
+      <button type="button" class="modal-close" id="modalClose" aria-label="Закрыть">×</button>
+    </div>
+    <form id="userForm" class="modal-form">
+      <input type="hidden" id="fId">
+      <div class="modal-scroll">
+        <div class="admin-form-grid">
+          <div class="field">
+            <label class="ui-label" for="fLastName">Фамилия *</label>
+            <input type="text" id="fLastName" required>
+          </div>
+          <div class="field">
+            <label class="ui-label" for="fFirstName">Имя *</label>
+            <input type="text" id="fFirstName" required>
+          </div>
+          <div class="field">
+            <label class="ui-label" for="fMiddleName">Отчество</label>
+            <input type="text" id="fMiddleName">
+          </div>
+          <div class="field">
+            <label class="ui-label" for="fRole">Роль *</label>
+            <select id="fRole" required></select>
+          </div>
+          <div class="field">
+            <label class="ui-label" for="fPhone">Телефон</label>
+            <input type="text" id="fPhone" placeholder="+79001234567">
+          </div>
+          <div class="field">
+            <label class="ui-label" for="fMaxId">ID MAX</label>
+            <input type="text" id="fMaxId" inputmode="numeric" placeholder="числовой ID из MAX">
+          </div>
+          <div class="field">
+            <label class="ui-label" for="fStatus">Статус</label>
+            <select id="fStatus">
+              <option value="active">активен</option>
+              <option value="inactive">не активен</option>
+            </select>
+          </div>
+
+          <div class="admin-form-section" id="kcSection">
+            <h3>Keycloak (вход на сайт)</h3>
+            <p class="stat-mini">Для ролей admin, HR и преподаватель создаётся учётная запись Keycloak с ролями и атрибутом <code>max_id</code>.</p>
+            <div class="admin-form-grid">
+              <div class="field">
+                <label class="ui-label" for="fKcUsername">Логин Keycloak</label>
+                <input type="text" id="fKcUsername" autocomplete="off">
+              </div>
+              <div class="field">
+                <label class="ui-label" for="fKcEmail">Email Keycloak</label>
+                <input type="email" id="fKcEmail">
+              </div>
+              <div class="field" id="fKcPasswordWrap">
+                <label class="ui-label" for="fKcPassword">Пароль Keycloak</label>
+                <input type="text" id="fKcPassword" placeholder="пусто = сгенерировать">
+              </div>
+              <div class="field" id="fKcLinkedWrap" hidden>
+                <label class="ui-label">Привязка</label>
+                <div id="fKcLinked" class="stat-mini">—</div>
+              </div>
+            </div>
+            <div class="admin-kc-actions" id="kcActions" hidden>
+              <button type="button" class="btn secondary small" id="resetKcPasswordBtn">Сбросить пароль KC</button>
+              <button type="button" class="btn secondary small" id="linkKcBtn">Привязать существующий KC</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn secondary" id="modalCancel">Отмена</button>
+        <button type="submit" class="btn" id="modalSave">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="api-client.js"></script>
+<script src="field-formatters.js"></script>
+<script src="admin-api.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var users = [];
+  var roles = [];
+  var auditItems = [];
+  var auditMeta = { actions: [], entity_types: [] };
+  var currentView = "users";
+  var editingId = null;
+  var toastTimer;
+
+  function $(sel) { return document.querySelector(sel); }
+  function esc(s) { return String(s || "").replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); }
+
+  function formatDt(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return esc(iso);
+    return d.toLocaleString("ru-RU");
+  }
+
+  function showView(view) {
+    currentView = view;
+    $("#usersView").hidden = view !== "users";
+    $("#auditView").hidden = view !== "audit";
+    document.querySelectorAll(".admin-tab").forEach(function (btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-view") === view);
+    });
+    if (view === "audit") {
+      reloadAudit().catch(function (e) { showToast(e.message, "error"); });
+    }
+  }
+
+  function showToast(text, kind) {
+    var el = $("#toastTop");
+    if (!el) return;
+    el.textContent = text;
+    el.className = "toast-top show " + (kind || "info");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = "toast-top"; }, 4500);
+  }
+
+  function toggleKcSection(roleCode) {
+    var show = !!AdminApi.WEB_ROLES[roleCode];
+    $("#kcSection").hidden = !show;
+  }
+
+  function fillRoleSelects() {
+    var html = roles.map(function (r) {
+      return '<option value="' + esc(r.code) + '">' + esc(r.name) + (r.web_access ? " · веб" : "") + '</option>';
+    }).join("");
+    $("#roleFilter").innerHTML = '<option value="">Все роли</option>' + html;
+    $("#fRole").innerHTML = html;
+  }
+
+  function renderStats() {
+    var counts = {};
+    users.forEach(function (u) {
+      counts[u.role_code] = (counts[u.role_code] || 0) + 1;
+    });
+    $("#statsRow").innerHTML = roles.map(function (r) {
+      return '<div class="stat-mini"><strong>' + (counts[r.code] || 0) + '</strong> ' + esc(r.name) + '</div>';
+    }).join("") + '<div class="stat-mini"><strong>' + users.length + '</strong> всего</div>';
+  }
+
+  function filteredUsers() {
+    var role = $("#roleFilter").value;
+    var q = ($("#searchInput").value || "").trim().toLowerCase();
+    return users.filter(function (u) {
+      if (role && u.role_code !== role) return false;
+      if (!q) return true;
+      var kc = u.keycloak || {};
+      var hay = [
+        AdminApi.fullName(u), u.phone, u.max_id, u.status,
+        kc.username, kc.email, (kc.realm_roles || []).join(" ")
+      ].join(" ").toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+  }
+
+  function renderTable() {
+    var rows = filteredUsers();
+    if (!rows.length) {
+      $("#usersBody").innerHTML = '<tr><td colspan="7" class="empty">Пользователи не найдены</td></tr>';
+      return;
+    }
+    $("#usersBody").innerHTML = rows.map(function (u) {
+      var kc = u.keycloak || {};
+      var kcLabel = kc.username
+        ? esc(kc.username) + (kc.max_id != null ? ' · MAX ' + esc(kc.max_id) : "")
+        : (AdminApi.WEB_ROLES[u.role_code] ? '<span class="tag gray">нет KC</span>' : "—");
+      return '<tr data-id="' + esc(u.id) + '">' +
+        '<td><strong>' + esc(AdminApi.fullName(u)) + '</strong></td>' +
+        '<td><span class="tag">' + esc(AdminApi.roleLabel(u.role_code)) + '</span></td>' +
+        '<td>' + (u.max_id != null ? '<span class="max-id">' + esc(u.max_id) + '</span>' : "—") + '</td>' +
+        '<td>' + (u.phone ? esc(u.phone) : "—") + '</td>' +
+        '<td>' + kcLabel + '</td>' +
+        '<td><span class="tag ' + (u.status === "active" ? "green" : "gray") + '">' + esc(u.status === "active" ? "активен" : "не активен") + '</span></td>' +
+        '<td><button type="button" class="btn secondary small edit-btn">Изменить</button></td>' +
+      '</tr>';
+    }).join("");
+  }
+
+  function openModal(user) {
+    editingId = user ? user.id : null;
+    $("#modalTitle").textContent = user ? "Редактировать пользователя" : "Новый пользователь";
+    $("#fId").value = user ? user.id : "";
+    $("#fLastName").value = user ? (user.last_name || "") : "";
+    $("#fFirstName").value = user ? (user.first_name || "") : "";
+    $("#fMiddleName").value = user ? (user.middle_name || "") : "";
+    $("#fRole").value = user ? user.role_code : "employee";
+    $("#fPhone").value = user ? (user.phone || "") : "";
+    $("#fMaxId").value = user && user.max_id != null ? String(user.max_id) : "";
+    $("#fStatus").value = user && user.status === "inactive" ? "inactive" : "active";
+
+    var kc = user && user.keycloak ? user.keycloak : null;
+    $("#fKcUsername").value = kc && kc.username ? kc.username : "";
+    $("#fKcEmail").value = kc && kc.email ? kc.email : "";
+    $("#fKcPassword").value = "";
+    $("#fKcPasswordWrap").hidden = !!user;
+    $("#fKcLinkedWrap").hidden = !user;
+    $("#kcActions").hidden = !user;
+    $("#fKcLinked").textContent = kc && kc.username
+      ? "Привязан: " + kc.username + " · роли: " + (kc.realm_roles || []).join(", ")
+      : (AdminApi.WEB_ROLES[(user && user.role_code) || ""] ? "Keycloak не привязан" : "Не требуется");
+
+    toggleKcSection($("#fRole").value);
+    $("#userModal").classList.add("open");
+  }
+
+  function closeModal() {
+    $("#userModal").classList.remove("open");
+    editingId = null;
+  }
+
+  async function reload() {
+    users = await AdminApi.loadUsers();
+    renderStats();
+    renderTable();
+    fillAuditActorFilter();
+  }
+
+  function fillAuditActorFilter() {
+    var select = $("#auditActorFilter");
+    if (!select) return;
+    var current = select.value;
+    var actors = {};
+    users.forEach(function (u) {
+      actors[u.id] = AdminApi.fullName(u);
+    });
+    auditItems.forEach(function (item) {
+      if (item.actor_user_id && item.actor_name) {
+        actors[item.actor_user_id] = item.actor_name;
+      }
+    });
+    var options = Object.keys(actors).sort(function (a, b) {
+      return (actors[a] || "").localeCompare(actors[b] || "", "ru");
+    }).map(function (id) {
+      return '<option value="' + esc(id) + '">' + esc(actors[id]) + '</option>';
+    }).join("");
+    select.innerHTML = '<option value="">Все</option>' + options;
+    if (current && actors[current]) select.value = current;
+  }
+
+  function fillAuditMetaFilters() {
+    var actionSelect = $("#auditActionFilter");
+    var entitySelect = $("#auditEntityFilter");
+    if (!actionSelect || !entitySelect) return;
+    actionSelect.innerHTML = '<option value="">Все</option>' + (auditMeta.actions || []).map(function (item) {
+      return '<option value="' + esc(item.code) + '">' + esc(item.label) + '</option>';
+    }).join("");
+    entitySelect.innerHTML = '<option value="">Все</option>' + (auditMeta.entity_types || []).map(function (item) {
+      return '<option value="' + esc(item.code) + '">' + esc(item.label) + '</option>';
+    }).join("");
+  }
+
+  function renderAuditTable() {
+    if (!auditItems.length) {
+      $("#auditBody").innerHTML = '<tr><td colspan="6" class="empty">Записей не найдено</td></tr>';
+      return;
+    }
+    $("#auditBody").innerHTML = auditItems.map(function (item) {
+      var restored = item.restored_at
+        ? '<span class="tag gray">восстановлено</span>'
+        : (item.can_restore
+          ? '<button type="button" class="btn secondary small restore-audit-btn" data-id="' + esc(item.id) + '">Восстановить</button>'
+          : "—");
+      return '<tr data-id="' + esc(item.id) + '">' +
+        '<td>' + formatDt(item.created_at) + '</td>' +
+        '<td>' + esc(item.actor_name || "—") + '</td>' +
+        '<td><span class="tag">' + esc(item.action_label || item.action) + '</span></td>' +
+        '<td>' + esc(item.entity_type_label || item.entity_type) + '</td>' +
+        '<td class="audit-label" title="' + esc(item.entity_label || item.entity_id || "—") + '">' +
+          esc(item.entity_label || item.entity_id || "—") +
+        '</td>' +
+        '<td class="audit-actions">' + restored + '</td>' +
+      '</tr>';
+    }).join("");
+  }
+
+  async function reloadAudit() {
+    auditItems = await AdminApi.loadAuditLog({
+      actor_user_id: ($("#auditActorFilter").value || "").trim() || null,
+      action: ($("#auditActionFilter").value || "").trim() || null,
+      entity_type: ($("#auditEntityFilter").value || "").trim() || null,
+      restorable_only: $("#auditRestorableFilter").checked,
+      limit: 200,
+    });
+    fillAuditActorFilter();
+    renderAuditTable();
+  }
+
+  async function bootstrap() {
+    var me = await MaxRassApi.get("/auth/me");
+    var profile = me.profile || me;
+    $("#adminName").textContent = AdminApi.fullName(profile) || me.username || "Admin";
+    $("#adminAvatar").textContent = (profile.first_name && profile.first_name[0] ? profile.first_name[0] : "A").toUpperCase();
+    roles = await AdminApi.loadRoles();
+    fillRoleSelects();
+    auditMeta = await AdminApi.loadAuditMeta();
+    fillAuditMetaFilters();
+    await reload();
+    $("#appRoot").hidden = false;
+  }
+
+  $("#refreshBtn").addEventListener("click", function () {
+    reload().catch(function (e) { alert(e.message); });
+  });
+
+  document.querySelectorAll(".admin-tab").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      showView(btn.getAttribute("data-view") || "users");
+    });
+  });
+
+  $("#auditRefreshBtn").addEventListener("click", function () {
+    reloadAudit().catch(function (e) { showToast(e.message, "error"); });
+  });
+  ["auditActorFilter", "auditActionFilter", "auditEntityFilter", "auditRestorableFilter"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("change", function () {
+      reloadAudit().catch(function (e) { showToast(e.message, "error"); });
+    });
+  });
+
+  $("#auditBody").addEventListener("click", async function (e) {
+    var btn = e.target.closest(".restore-audit-btn");
+    if (!btn) return;
+    var entryId = btn.getAttribute("data-id");
+    if (!entryId) return;
+    if (!confirm("Восстановить удалённый элемент?")) return;
+    try {
+      await AdminApi.restoreAuditEntry(entryId);
+      showToast("Элемент восстановлен", "success");
+      await reloadAudit();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  $("#roleFilter").addEventListener("change", renderTable);
+  $("#searchInput").addEventListener("input", renderTable);
+  $("#createBtn").addEventListener("click", function () { openModal(null); });
+  $("#modalClose").addEventListener("click", closeModal);
+  $("#modalCancel").addEventListener("click", closeModal);
+  $("#fRole").addEventListener("change", function () { toggleKcSection($("#fRole").value); });
+
+  $("#userModal").addEventListener("click", function (e) {
+    if (e.target === $("#userModal")) closeModal();
+  });
+
+  $("#usersBody").addEventListener("click", function (e) {
+    var btn = e.target.closest(".edit-btn");
+    if (!btn) return;
+    var row = btn.closest("tr");
+    var id = row && row.getAttribute("data-id");
+    var user = users.find(function (u) { return String(u.id) === String(id); });
+    if (user) openModal(user);
+  });
+
+  $("#resetKcPasswordBtn").addEventListener("click", async function () {
+    if (!editingId) return;
+    try {
+      var res = await AdminApi.resetKeycloakPassword(editingId, null, false);
+      showToast("Новый пароль Keycloak: " + res.password, "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  $("#linkKcBtn").addEventListener("click", async function () {
+    if (!editingId) return;
+    var username = ($("#fKcUsername").value || "").trim();
+    if (!username) {
+      showToast("Укажите логин Keycloak", "error");
+      return;
+    }
+    try {
+      await AdminApi.linkKeycloak(editingId, username);
+      await reload();
+      var user = users.find(function (u) { return String(u.id) === String(editingId); });
+      if (user) openModal(user);
+      showToast("Keycloak привязан", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  $("#userForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var maxRaw = ($("#fMaxId").value || "").trim();
+    var maxId = maxRaw ? parseInt(maxRaw, 10) : null;
+    if (maxRaw && (isNaN(maxId) || maxId <= 0)) {
+      showToast("ID MAX должен быть положительным числом", "error");
+      return;
+    }
+
+    var body = {
+      last_name: $("#fLastName").value.trim(),
+      first_name: $("#fFirstName").value.trim(),
+      middle_name: $("#fMiddleName").value.trim() || null,
+      role_code: $("#fRole").value,
+      phone: $("#fPhone").value.trim() || null,
+      max_id: maxId,
+      status: $("#fStatus").value,
+    };
+
+    if (AdminApi.WEB_ROLES[body.role_code]) {
+      body.keycloak_username = ($("#fKcUsername").value || "").trim() || null;
+      body.keycloak_email = ($("#fKcEmail").value || "").trim() || null;
+      body.create_keycloak = true;
+      if (!editingId) {
+        body.keycloak_password = ($("#fKcPassword").value || "").trim() || null;
+      } else {
+        body.keycloak_email = ($("#fKcEmail").value || "").trim() || null;
+        body.sync_keycloak = true;
+      }
+    }
+
+    try {
+      var result;
+      if (editingId) {
+        body.sync_keycloak = AdminApi.WEB_ROLES[body.role_code];
+        result = await AdminApi.updateUser(editingId, body);
+      } else {
+        result = await AdminApi.createUser(body);
+      }
+      await reload();
+      closeModal();
+      if (result.generated_keycloak_password) {
+        alert("Пользователь создан.\n\nВременный пароль Keycloak: " + result.generated_keycloak_password);
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  bootstrap().catch(function (err) {
+    document.body.innerHTML = '<div style="padding:40px;font-family:sans-serif"><h2>Ошибка загрузки</h2><p>' + esc(err.message) + '</p><p><a href="/">На главную</a></p></div>';
+  });
+})();
+</script>
 </body>
 </html>

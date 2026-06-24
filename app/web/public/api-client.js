@@ -77,6 +77,10 @@
     return request("PATCH", path, body);
   }
 
+  function put(path, body) {
+    return request("PUT", path, body);
+  }
+
   function del(path) {
     return request("DELETE", path);
   }
@@ -113,6 +117,7 @@
     get: get,
     post: post,
     patch: patch,
+    put: put,
     del: del,
     fmtDate: fmtDate,
     fmtName: fmtName,

@@ -44,3 +44,5 @@ desktop.ini
 *.log
 *.tmp
 .cache/
+~$*.xlsx
+**/~$*

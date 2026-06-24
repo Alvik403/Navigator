@@ -22,8 +22,6 @@
   var store = {
     me: null,
     users: [],
-    groups: [],
-    groupMembers: [],
     teachersMeta: [],
     attendanceByUser: {},
     attendanceIssues: {},
@@ -32,6 +30,15 @@
     strikes: [],
     appeals: [],
     lessons: [],
+    tracks: [],
+    conveyorSlots: [],
+    smuPatterns: [],
+    smuAssignments: [],
+    smuExtraShifts: [],
+    smuOverrides: {},
+    trackAssignments: {},
+    instructorTracks: {},
+    trackTeacherLinks: [],
   };
 
   function uiRoleCode(apiCode) {
@@ -60,18 +67,6 @@
     };
   }
 
-  function mapGroup(row) {
-    return {
-      id: row.id,
-      id_parent: row.id_parent || null,
-      name: row.name,
-      id_hr: row.id_hr,
-      createdAt: row.created_at ? String(row.created_at).slice(0, 10) : "",
-      status: row.status || "active",
-      members: row.members || [],
-    };
-  }
-
   function mapStrike(row) {
     return {
       id: row.id,
@@ -87,6 +82,7 @@
       created_at: row.created_at,
       last_name: row.last_name,
       first_name: row.first_name,
+      track_name: row.track_name,
       group_name: row.group_name,
     };
   }
@@ -95,8 +91,10 @@
     var d = row.starts_at ? new Date(row.starts_at) : null;
     return {
       id: row.id,
-      group_id: row.group_id,
-      group_name: row.group_name,
+      track_id: row.track_id || null,
+      track_name: row.track_name || null,
+      slot_id: row.slot_id || null,
+      slot_name: row.slot_name || null,
       teacher_id: row.teacher_id,
       teacher_name: row.teacher_name || [row.teacher_last_name, row.teacher_first_name].filter(Boolean).join(" "),
       starts_at: row.starts_at,
@@ -109,31 +107,41 @@
     };
   }
 
-  function groupTeachersFromLessons(groupId) {
-    var seen = {};
-    var result = [];
-    store.lessons.forEach(function (l) {
-      if (l.group_id !== groupId || seen[l.teacher_id]) return;
-      seen[l.teacher_id] = true;
-      var t = userById(l.teacher_id);
-      result.push({
-        id: l.teacher_id,
-        name: l.teacher_name || fullName(t),
-      });
-    });
-    return result;
+  function mapTrack(row) {
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      description: row.description || "",
+      practice_required: row.practice_required || 0,
+      lecture_required: row.lecture_required || 0,
+      completion_days: row.completion_days || 90,
+      status: row.status || "active",
+    };
   }
 
-  function rebuildGroupMembers(groups) {
-    var members = [];
-    groups.forEach(function (g) {
-      (g.members || []).forEach(function (m) {
-        if (uiRoleCode(m.role_code) === "student") {
-          members.push({ id_group: g.id, id_user: m.id, type: "student" });
-        }
-      });
-    });
-    return members;
+  function mapSmuPattern(row) {
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      work_days: row.work_days,
+      off_days: row.off_days,
+      anchor_date: row.anchor_date ? String(row.anchor_date).slice(0, 10) : "",
+      status: row.status || "active",
+    };
+  }
+
+  function mapConveyorSlot(row) {
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      starts_at_local: row.starts_at_local ? String(row.starts_at_local).slice(0, 5) : "",
+      duration_min: row.duration_min || 60,
+      sort_order: row.sort_order || 0,
+      status: row.status || "active",
+    };
   }
 
   function fullName(u) {
@@ -149,56 +157,26 @@
     return store.users.filter(function (u) { return u.id_role === code; });
   }
 
-  function courses() {
-    return store.groups.filter(function (g) { return !g.id_parent; });
+  function studentTracks(studentId) {
+    var result = [];
+    store.tracks.forEach(function (t) {
+      var assignments = store.trackAssignments[t.id] || [];
+      if (assignments.some(function (a) { return a.user_id === studentId && (a.status || "active") === "active"; })) {
+        result.push(t);
+      }
+    });
+    return result;
   }
 
-  function workingGroups(parentId) {
-    return store.groups.filter(function (g) { return g.id_parent === parentId; });
-  }
-
-  function allWorkingGroups() {
-    return store.groups.filter(function (g) { return g.id_parent; });
-  }
-
-  function groupStudents(groupId) {
-    return store.groupMembers
-      .filter(function (m) { return m.id_group === groupId && m.type === "student"; })
-      .map(function (m) { return userById(m.id_user); })
-      .filter(Boolean);
-  }
-
-  function studentGroups(studentId) {
-    return store.groupMembers
-      .filter(function (m) { return m.id_user === studentId && m.type === "student"; })
-      .map(function (m) { return store.groups.find(function (g) { return g.id === m.id_group; }); })
-      .filter(Boolean);
-  }
-
-  function studentWorkGroup(studentId) {
-    var list = studentGroups(studentId);
+  function studentPrimaryTrack(studentId) {
+    var list = studentTracks(studentId);
     return list.length ? list[0] : null;
   }
 
-  function courseOfGroup(groupId) {
-    var g = store.groups.find(function (x) { return x.id === groupId; });
-    if (!g) return null;
-    if (!g.id_parent) return g;
-    return store.groups.find(function (x) { return x.id === g.id_parent; });
-  }
-
-  function teacherDirectionsFromMeta(teacherId) {
+  function teacherTracksFromMeta(teacherId) {
     var meta = store.teachersMeta.find(function (t) { return t.id === teacherId; });
-    if (!meta || !meta.groups) return [];
-    var names = meta.groups.filter(function (g) { return !g.id_parent; }).map(function (g) { return g.name; });
-    return names.filter(function (v, i, a) { return a.indexOf(v) === i; });
-  }
-
-  function teacherWorkGroupsFromMeta(teacherId) {
-    var meta = store.teachersMeta.find(function (t) { return t.id === teacherId; });
-    if (!meta || !meta.groups) return [];
-    var names = meta.groups.filter(function (g) { return g.id_parent; }).map(function (g) { return g.name; });
-    return names.filter(function (v, i, a) { return a.indexOf(v) === i; });
+    if (!meta || !meta.tracks) return [];
+    return meta.tracks.map(function (t) { return t.name; }).filter(Boolean);
   }
 
   function lessonTitle(item) {
@@ -234,7 +212,7 @@
             time: d ? d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "",
             place: item.place || "",
           },
-          group: { name: item.group_name || "—" },
+          track: { name: item.track_name || item.group_name || "—" },
         };
       }),
     };
@@ -253,6 +231,12 @@
     store.attendanceIssues = map;
   }
 
+  async function loadAllTrackAssignments() {
+    await Promise.all(store.tracks.map(function (t) {
+      return loadTrackAssignments(t.id);
+    }));
+  }
+
   async function reloadCore() {
     var meRes = await api.get("/auth/me");
     store.me = meRes.profile || meRes;
@@ -262,7 +246,6 @@
       api.get("/hr/users?role=teacher"),
       api.get("/hr/users?role=curator"),
       api.get("/hr/users?role=hr"),
-      api.get("/hr/groups"),
       api.get("/hr/teachers"),
       api.get("/hr/reports/attendance/users"),
       api.get("/hr/notifications"),
@@ -270,6 +253,12 @@
       api.get("/hr/strikes"),
       api.get("/hr/appeals"),
       api.get("/hr/lessons"),
+      api.get("/hr/tracks"),
+      api.get("/hr/conveyor-slots?active_only=true"),
+      api.get("/hr/smu-patterns"),
+      api.get("/hr/smu-assignments"),
+      api.get("/hr/smu-extra-shifts"),
+      api.get("/hr/instructors/track-links"),
     ]);
 
     var employees = (results[0].items || []).map(mapUser);
@@ -281,11 +270,9 @@
       store.users.push(mapUser(store.me));
     }
 
-    store.groups = (results[4].items || []).map(mapGroup);
-    store.groupMembers = rebuildGroupMembers(store.groups);
-    store.teachersMeta = results[5].items || [];
+    store.teachersMeta = results[4].items || [];
 
-    var attRows = results[6].items || [];
+    var attRows = results[5].items || [];
     store.attendanceByUser = {};
     attRows.forEach(function (row) {
       var uid = row.user_id;
@@ -293,7 +280,7 @@
       store.attendanceByUser[uid].push(row);
     });
 
-    store.notifications = (results[7].items || []).map(function (n, i) {
+    store.notifications = (results[6].items || []).map(function (n, i) {
       return {
         id: n.id || String(i),
         id_user: n.delivered_to || n.user_id,
@@ -306,10 +293,20 @@
       };
     });
 
-    store.summaryReport = results[8] || null;
-    store.strikes = (results[9].items || []).map(mapStrike);
-    store.appeals = (results[10].items || []).map(mapStrike);
-    store.lessons = (results[11].items || []).map(mapLesson);
+    store.summaryReport = results[7] || null;
+    store.strikes = (results[8].items || []).map(mapStrike);
+    store.appeals = (results[9].items || []).map(mapStrike);
+    store.lessons = (results[10].items || []).map(mapLesson);
+    store.tracks = (results[11].items || []).map(mapTrack);
+    store.conveyorSlots = (results[12].items || []).map(mapConveyorSlot);
+    store.smuPatterns = (results[13].items || []).map(mapSmuPattern);
+    store.smuAssignments = results[14].items || [];
+    store.smuExtraShifts = results[15].items || [];
+    store.trackTeacherLinks = results[16].items || [];
+    store.trackAssignments = {};
+    store.instructorTracks = {};
+
+    await loadAllTrackAssignments();
 
     var studentIds = employees.map(function (u) { return u.id; });
     await loadAttendanceIssues(studentIds.slice(0, 50));
@@ -320,9 +317,22 @@
     return {
       roles: UI_ROLES,
       users: store.users,
-      groups: store.groups,
-      groupMembers: store.groupMembers,
       lessons: store.lessons,
+      tracks: function () { return store.tracks; },
+      conveyorSlots: function () { return store.conveyorSlots; },
+      smuPatterns: function () { return store.smuPatterns; },
+      smuAssignments: function () { return store.smuAssignments; },
+      smuExtraShifts: function () { return store.smuExtraShifts; },
+      smuOverrides: function () { return store.smuOverrides; },
+      smuOverrideAt: function (patternId, shiftDate, shiftNumber) {
+        return store.smuOverrides[smuOverrideStoreKey(patternId, shiftDate, shiftNumber)] || null;
+      },
+      trackAssignments: function (trackId) { return store.trackAssignments[trackId] || []; },
+      loadTrackAssignments: loadTrackAssignments,
+      trackTeacherLinks: function () { return store.trackTeacherLinks; },
+      instructorTracks: function (teacherId) { return store.instructorTracks[teacherId] || []; },
+      loadInstructorTracks: loadInstructorTracks,
+      instructorsForTrack: instructorsForTrack,
       marks: [],
       strikes: store.strikes,
       appeals: store.appeals,
@@ -332,16 +342,9 @@
       fullName: fullName,
       userById: userById,
       usersByRole: usersByRole,
-      courses: courses,
-      workingGroups: workingGroups,
-      allWorkingGroups: allWorkingGroups,
-      groupStudents: groupStudents,
-      studentGroups: studentGroups,
-      studentWorkGroup: studentWorkGroup,
-      courseOfGroup: courseOfGroup,
-      teacherDirectionsFromMeta: teacherDirectionsFromMeta,
-      teacherWorkGroupsFromMeta: teacherWorkGroupsFromMeta,
-      groupTeachersFromLessons: groupTeachersFromLessons,
+      studentTracks: studentTracks,
+      studentPrimaryTrack: studentPrimaryTrack,
+      teacherTracksFromMeta: teacherTracksFromMeta,
       studentAttendanceStats: studentAttendanceStats,
       teachersForHr: function () {
         if (!store.teachersMeta.length) {
@@ -435,10 +438,6 @@
     return api.post("/hr/users/bulk", { items: items });
   }
 
-  async function bulkAddGroupMembers(groupId, userIds) {
-    return api.post("/hr/groups/" + groupId + "/members/bulk", { user_ids: userIds });
-  }
-
   async function addStrike(userId, reason) {
     return api.post("/hr/users/" + userId + "/strikes", { reason: reason || "manual" });
   }
@@ -457,31 +456,8 @@
     return api.patch("/hr/users/" + userId, body);
   }
 
-  async function createGroup(data) {
-    return api.post("/hr/groups", data);
-  }
-
-  async function updateGroup(id, data) {
-    return api.patch("/hr/groups/" + id, data);
-  }
-
-  async function syncGroupMembers(groupId, studentIds) {
-    var group = store.groups.find(function (g) { return g.id === groupId; });
-    var current = group ? (group.members || []).filter(function (m) {
-      return uiRoleCode(m.role_code) === "student";
-    }).map(function (m) { return m.id; }) : [];
-    var toAdd = studentIds.filter(function (id) { return current.indexOf(id) < 0; });
-    var toRemove = current.filter(function (id) { return studentIds.indexOf(id) < 0; });
-    for (var i = 0; i < toRemove.length; i++) {
-      await api.del("/hr/groups/" + groupId + "/members/" + toRemove[i]);
-    }
-    if (toAdd.length) {
-      await bulkAddGroupMembers(groupId, toAdd);
-    }
-  }
-
-  async function listLessons(groupId) {
-    var q = groupId ? "?group_id=" + encodeURIComponent(groupId) : "";
+  async function listLessons(trackId) {
+    var q = trackId ? "?track_id=" + encodeURIComponent(trackId) : "";
     var res = await api.get("/hr/lessons" + q);
     return (res.items || []).map(mapLesson);
   }
@@ -490,22 +466,291 @@
     return api.post("/hr/lessons", data);
   }
 
+  async function loadTrackAssignments(trackId) {
+    var res = await api.get("/hr/tracks/" + trackId + "/assignments");
+    store.trackAssignments[trackId] = res.items || [];
+    return store.trackAssignments[trackId];
+  }
+
+  async function createTrack(data) {
+    var res = await api.post("/hr/tracks", data);
+    await reloadCore();
+    return res;
+  }
+
+  async function updateTrack(trackId, data) {
+    return api.patch("/hr/tracks/" + trackId, data);
+  }
+
+  async function deleteTrack(trackId) {
+    var res = await api.del("/hr/tracks/" + trackId);
+    var idx = store.tracks.findIndex(function (t) { return String(t.id) === String(trackId); });
+    if (idx >= 0) store.tracks.splice(idx, 1);
+    return res;
+  }
+
+  async function assignUserTrack(userId, trackId, status, dueDate) {
+    var body = { track_id: trackId, status: status || "active" };
+    if (dueDate) body.due_date = dueDate;
+    return api.post("/hr/users/" + userId + "/tracks", body);
+  }
+
+  async function previewFormation(data) {
+    return api.post("/hr/formation/preview", data);
+  }
+
+  async function runAutoFormation(data) {
+    return api.post("/hr/formation/auto-run", data || {});
+  }
+
+  async function loadFormationPlan(data) {
+    return api.post("/hr/formation/plan", data);
+  }
+
+  async function loadFormationPlanMonth(data) {
+    return api.post("/hr/formation/plan/month", data);
+  }
+
+  async function createFormationPlan(data) {
+    return api.post("/hr/formation/plan/create", data);
+  }
+
+  async function createFormationPlanMonth(data) {
+    return api.post("/hr/formation/plan/month/create", data);
+  }
+
+  async function loadFormationLog(params) {
+    var q = new URLSearchParams();
+    if (params && params.from_date) q.set("from_date", params.from_date);
+    if (params && params.to_date) q.set("to_date", params.to_date);
+    if (params && params.limit) q.set("limit", String(params.limit));
+    var suffix = q.toString() ? "?" + q.toString() : "";
+    var res = await api.get("/hr/formation/log" + suffix);
+    return res.items || [];
+  }
+
+  async function loadTrackFormationSettings(trackId) {
+    return api.get("/hr/tracks/" + trackId + "/formation-settings");
+  }
+
+  async function updateTrackFormationSettings(trackId, data) {
+    return api.patch("/hr/tracks/" + trackId + "/formation-settings", data);
+  }
+
+  async function recalculateTrackWeights(trackId, force) {
+    var q = force ? "?force=true" : "";
+    return api.post("/hr/tracks/" + trackId + "/recalculate-weights" + q);
+  }
+
+  async function createSmuPattern(data) {
+    return api.post("/hr/smu-patterns", data);
+  }
+
+  async function updateSmuPattern(patternId, data) {
+    return api.patch("/hr/smu-patterns/" + patternId, data);
+  }
+
+  async function deleteSmuPattern(patternId) {
+    var res = await api.del("/hr/smu-patterns/" + patternId);
+    var idx = store.smuPatterns.findIndex(function (p) { return String(p.id) === String(patternId); });
+    if (idx >= 0) store.smuPatterns.splice(idx, 1);
+    clearSmuOverrideIndexForPattern(patternId);
+    return res;
+  }
+
+  async function assignUserSmu(userId, smuPatternId, shiftNumber) {
+    var body = { smu_pattern_id: smuPatternId, shift_number: shiftNumber || 1 };
+    return api.post("/hr/users/" + userId + "/smu", body);
+  }
+
+  function smuOverrideStoreKey(patternId, shiftDate, shiftNumber) {
+    return String(patternId) + ":" + String(shiftDate).slice(0, 10) + ":" + String(shiftNumber);
+  }
+
+  function indexSmuOverrides(items) {
+    (items || []).forEach(function (row) {
+      var key = smuOverrideStoreKey(row.smu_pattern_id, row.shift_date, row.shift_number);
+      store.smuOverrides[key] = row;
+    });
+  }
+
+  function clearSmuOverrideIndexForPattern(patternId, fromDate, toDate) {
+    var prefix = String(patternId) + ":";
+    Object.keys(store.smuOverrides).forEach(function (key) {
+      if (key.indexOf(prefix) !== 0) return;
+      var datePart = key.slice(prefix.length, prefix.length + 10);
+      if (fromDate && datePart < fromDate) return;
+      if (toDate && datePart > toDate) return;
+      delete store.smuOverrides[key];
+    });
+  }
+
+  async function loadSmuPatternOverrides(patternId, fromDate, toDate) {
+    var q = [];
+    if (fromDate) q.push("from_date=" + encodeURIComponent(fromDate));
+    if (toDate) q.push("to_date=" + encodeURIComponent(toDate));
+    var suffix = q.length ? "?" + q.join("&") : "";
+    var res = await api.get("/hr/smu-patterns/" + patternId + "/overrides" + suffix);
+    clearSmuOverrideIndexForPattern(patternId, fromDate, toDate);
+    indexSmuOverrides(res.items || []);
+    return res.items || [];
+  }
+
+  async function setSmuPatternOverride(patternId, shiftDate, shiftNumber, state, note) {
+    var res = await api.put("/hr/smu-patterns/" + patternId + "/overrides", {
+      shift_date: shiftDate,
+      shift_number: shiftNumber,
+      state: state || "auto",
+      note: note || null,
+    });
+    var key = smuOverrideStoreKey(patternId, shiftDate, shiftNumber);
+    if (res.cleared || !res.item) delete store.smuOverrides[key];
+    else store.smuOverrides[key] = res.item;
+    return res;
+  }
+
+  async function clearSmuPatternOverrides(patternId, fromDate, toDate) {
+    var q = [];
+    if (fromDate) q.push("from_date=" + encodeURIComponent(fromDate));
+    if (toDate) q.push("to_date=" + encodeURIComponent(toDate));
+    var suffix = q.length ? "?" + q.join("&") : "";
+    var res = await api.del("/hr/smu-patterns/" + patternId + "/overrides" + suffix);
+    clearSmuOverrideIndexForPattern(patternId, fromDate, toDate);
+    return res;
+  }
+
+  async function applySmuPatternPreset(patternId, preset, anchorDate, clearOverrides) {
+    var res = await api.post("/hr/smu-patterns/" + patternId + "/apply-preset", {
+      preset: preset,
+      anchor_date: anchorDate || null,
+      clear_overrides: clearOverrides !== false,
+    });
+    if (res.item) {
+      var idx = store.smuPatterns.findIndex(function (p) { return p.id === patternId; });
+      if (idx >= 0) store.smuPatterns[idx] = mapSmuPattern(res.item);
+      else store.smuPatterns.push(mapSmuPattern(res.item));
+    }
+    if (clearOverrides !== false) {
+      store.smuOverrides = {};
+    }
+    return res;
+  }
+
+  async function removeUserSmu(userId) {
+    return api.del("/hr/users/" + userId + "/smu");
+  }
+
+  async function addSmuExtraShift(userId, shiftDate, shiftNumber, note) {
+    return api.post("/hr/smu-extra-shifts", {
+      user_id: userId,
+      shift_date: shiftDate,
+      shift_number: shiftNumber || 1,
+      note: note || null,
+    });
+  }
+
+  async function updateSmuExtraShift(shiftId, data) {
+    return api.patch("/hr/smu-extra-shifts/" + shiftId, data || {});
+  }
+
+  async function removeSmuExtraShift(shiftId) {
+    return api.del("/hr/smu-extra-shifts/" + shiftId);
+  }
+
+  async function syncCuratorWards(curatorId, userIds) {
+    return api.post("/hr/curators/" + curatorId + "/wards/sync", { user_ids: userIds || [] });
+  }
+
+  async function loadInstructorTracks(teacherId) {
+    var res = await api.get("/hr/instructors/" + teacherId + "/tracks");
+    store.instructorTracks[teacherId] = res.items || [];
+    return store.instructorTracks[teacherId];
+  }
+
+  async function syncInstructorTracks(teacherId, trackIds) {
+    var res = await api.post("/hr/instructors/" + teacherId + "/tracks/sync", { track_ids: trackIds || [] });
+    store.instructorTracks[teacherId] = null;
+    var linksRes = await api.get("/hr/instructors/track-links");
+    store.trackTeacherLinks = linksRes.items || [];
+    return res;
+  }
+
+  function instructorsForTrack(trackId) {
+    if (!trackId) return store.users.filter(function (u) { return u.id_role === "teacher"; });
+    var ids = store.trackTeacherLinks
+      .filter(function (l) { return l.track_id === trackId; })
+      .map(function (l) { return l.teacher_id; });
+    if (!ids.length) return store.users.filter(function (u) { return u.id_role === "teacher"; });
+    return store.users.filter(function (u) { return ids.indexOf(u.id) >= 0; });
+  }
+
+  function instructorsOnTrack(trackId) {
+    return store.trackTeacherLinks.filter(function (l) { return l.track_id === trackId; });
+  }
+
+  function instructorTrackIds(teacherId) {
+    return store.trackTeacherLinks
+      .filter(function (l) { return l.teacher_id === teacherId; })
+      .map(function (l) { return l.track_id; });
+  }
+
+  async function addInstructorToTrack(teacherId, trackId) {
+    var ids = instructorTrackIds(teacherId).slice();
+    if (ids.indexOf(trackId) < 0) ids.push(trackId);
+    return syncInstructorTracks(teacherId, ids);
+  }
+
+  async function removeInstructorFromTrack(teacherId, trackId) {
+    var ids = instructorTrackIds(teacherId).filter(function (id) { return id !== trackId; });
+    return syncInstructorTracks(teacherId, ids);
+  }
+
   global.HrApi = {
     bootstrap: bootstrap,
     refresh: refresh,
     updateUser: updateUser,
     updateStudent: updateStudent,
     createUsersBulk: createUsersBulk,
-    bulkAddGroupMembers: bulkAddGroupMembers,
     addStrike: addStrike,
     revokeStrike: revokeStrike,
     resolveAppeal: resolveAppeal,
     patchUserStatus: patchUserStatus,
-    createGroup: createGroup,
-    updateGroup: updateGroup,
-    syncGroupMembers: syncGroupMembers,
     listLessons: listLessons,
     createLesson: createLesson,
+    createTrack: createTrack,
+    updateTrack: updateTrack,
+    deleteTrack: deleteTrack,
+    assignUserTrack: assignUserTrack,
+    previewFormation: previewFormation,
+    runAutoFormation: runAutoFormation,
+    loadFormationPlan: loadFormationPlan,
+    loadFormationPlanMonth: loadFormationPlanMonth,
+    createFormationPlan: createFormationPlan,
+    createFormationPlanMonth: createFormationPlanMonth,
+    loadFormationLog: loadFormationLog,
+    loadTrackFormationSettings: loadTrackFormationSettings,
+    updateTrackFormationSettings: updateTrackFormationSettings,
+    loadTrackAssignments: loadTrackAssignments,
+    recalculateTrackWeights: recalculateTrackWeights,
+    createSmuPattern: createSmuPattern,
+    updateSmuPattern: updateSmuPattern,
+    deleteSmuPattern: deleteSmuPattern,
+    loadSmuPatternOverrides: loadSmuPatternOverrides,
+    setSmuPatternOverride: setSmuPatternOverride,
+    clearSmuPatternOverrides: clearSmuPatternOverrides,
+    applySmuPatternPreset: applySmuPatternPreset,
+    assignUserSmu: assignUserSmu,
+    removeUserSmu: removeUserSmu,
+    addSmuExtraShift: addSmuExtraShift,
+    updateSmuExtraShift: updateSmuExtraShift,
+    removeSmuExtraShift: removeSmuExtraShift,
+    syncCuratorWards: syncCuratorWards,
+    loadInstructorTracks: loadInstructorTracks,
+    syncInstructorTracks: syncInstructorTracks,
+    instructorsForTrack: instructorsForTrack,
+    instructorsOnTrack: instructorsOnTrack,
+    addInstructorToTrack: addInstructorToTrack,
+    removeInstructorFromTrack: removeInstructorFromTrack,
     parseFio: parseFio,
     apiRoleCode: apiRoleCode,
   };

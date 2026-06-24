@@ -35,8 +35,10 @@ from db import (
     list_tables,
     run_readonly_query,
     seed_demo_data,
+    seed_formation_test_data,
 )
 from lesson_reminder_worker import LESSON_REMINDER_ENABLED, run_lesson_reminder_worker
+from formation_worker import FORMATION_AUTO_ENABLED, run_formation_auto_worker
 from max_client import (
     MAX_BOT_API_URL,
     answer_max_callback,
@@ -44,8 +46,8 @@ from max_client import (
     extract_max_user_id,
     send_max_message,
 )
+from routers.admin import router as admin_router
 from routers.hr import router as hr_router
-from routers.teacher import router as teacher_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("max-auth")
@@ -95,8 +97,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(admin_router)
 app.include_router(hr_router)
-app.include_router(teacher_router)
 
 
 class StartResponse(BaseModel):
@@ -386,7 +388,7 @@ async def complete_password_reset(
 
     await send_max_message(
         target.chat_id,
-        "Восстановление пароля MAX RASS\n\n"
+        "Восстановление пароля Навигатор\n\n"
         f"Временный пароль: {temp_password}\n\n"
         f"Войдите на сайт {WEB_URL} и установите новый пароль.",
         user_id=target.user_id,
@@ -500,14 +502,14 @@ async def handle_bot_started(event: dict[str, Any]) -> dict[str, str]:
     mapping = await lookup_keycloak_user(max_user_id)
     if mode == "reset":
         prompt = (
-            f"Запрос на восстановление пароля MAX RASS\n\n"
+            f"Запрос на восстановление пароля Навигатор\n\n"
             f"Роль: {mapping['label']}\n"
             f"Аккаунт: {mapping['username']}\n\n"
             "Подтвердите восстановление пароля?"
         )
     else:
         prompt = (
-            f"Запрос на вход в MAX RASS\n\n"
+            f"Запрос на вход в Навигатор\n\n"
             f"Роль: {mapping['label']}\n"
             f"Аккаунт: {mapping['username']}\n\n"
             "Подтвердите вход в систему?"
@@ -667,6 +669,11 @@ async def startup() -> None:
     else:
         logger.info("Lesson reminder worker disabled (LESSON_REMINDER_ENABLED=false)")
 
+    if FORMATION_AUTO_ENABLED:
+        asyncio.create_task(run_formation_auto_worker())
+    else:
+        logger.info("Formation auto worker disabled (FORMATION_AUTO_ENABLED=false)")
+
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
@@ -704,6 +711,11 @@ async def query_db(body: DbQueryRequest) -> dict[str, Any]:
 @app.post("/api/v1/db/seed-demo")
 async def seed_db_demo() -> dict[str, Any]:
     return {"status": "ok", "result": await seed_demo_data()}
+
+
+@app.post("/api/v1/db/seed-formation-test")
+async def seed_db_formation_test() -> dict[str, Any]:
+    return {"status": "ok", "result": await seed_formation_test_data()}
 
 
 @app.post("/api/v1/db/lesson-reminders/run")

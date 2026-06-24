@@ -1,4 +1,4 @@
-/* MAX RASS — SVG-иконки (Lucide-style) */
+/* Навигатор — SVG-иконки (Lucide-style) */
 (function (global) {
   "use strict";
 

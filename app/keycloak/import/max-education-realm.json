@@ -1,8 +1,8 @@
 {
   "realm": "max-education",
   "enabled": true,
-  "displayName": "MAX RASS",
-  "displayNameHtml": "MAX RASS",
+  "displayName": "Навигатор",
+  "displayNameHtml": "Навигатор",
   "loginTheme": "max-rass",
   "internationalizationEnabled": true,
   "supportedLocales": ["ru"],

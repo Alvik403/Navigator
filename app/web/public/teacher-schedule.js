@@ -1,4 +1,4 @@
-(function (global) {
+﻿(function (global) {
   "use strict";
 
   var CAL_DAY_START = 8 * 60;
@@ -65,22 +65,22 @@
     if (!involvesMe) return reasons;
 
     if (a.id_teacher === teacherId && b.id_teacher === teacherId) {
-      reasons.push("Двойное бронирование: " + (b.title || "занятие"));
+      reasons.push("╨Ф╨▓╨╛╨╣╨╜╨╛╨╡ ╨▒╤А╨╛╨╜╨╕╤А╨╛╨▓╨░╨╜╨╕╨╡: " + (b.title || "╨╖╨░╨╜╤П╤В╨╕╨╡"));
     }
     var placeA = (a.place || "").trim().toLowerCase();
     var placeB = (b.place || "").trim().toLowerCase();
     if (placeA && placeB && placeA === placeB) {
-      reasons.push("Кабинет занят: " + (a.place || b.place));
+      reasons.push("╨Ъ╨░╨▒╨╕╨╜╨╡╤В ╨╖╨░╨╜╤П╤В: " + (a.place || b.place));
     }
     if (a.id_group && b.id_group && a.id_group === b.id_group) {
-      var gname = ctx.groupById ? (ctx.groupById(a.id_group)?.name || "группа") : "группа";
-      reasons.push("Группа занята: " + gname);
+      var gname = ctx.groupById ? (ctx.groupById(a.id_group)?.name || "╨│╤А╤Г╨┐╨┐╨░") : "╨│╤А╤Г╨┐╨┐╨░";
+      reasons.push("╨У╤А╤Г╨┐╨┐╨░ ╨╖╨░╨╜╤П╤В╨░: " + gname);
     }
     var idsA = studentIdsOf(a, ctx);
     var idsB = studentIdsOf(b, ctx);
     var shared = idsA.filter(function (id) { return idsB.indexOf(id) >= 0; });
     if (shared.length && ctx.fullName && ctx.userById) {
-      reasons.push("Ученик(и) заняты: " + shared.map(function (id) {
+      reasons.push("╨г╤З╨╡╨╜╨╕╨║(╨╕) ╨╖╨░╨╜╤П╤В╤Л: " + shared.map(function (id) {
         return ctx.fullName(ctx.userById(id));
       }).join(", "));
     }
@@ -208,13 +208,13 @@
       endsAt: draft.endsAt,
       date: draft.date,
       studentIds: draft.studentIds,
-      title: draft.title || "Занятие",
+      title: draft.title || "╨Ч╨░╨╜╤П╤В╨╕╨╡",
     });
     var errors = detectConflicts(pseudo, (allLessons || []).filter(function (l) {
       return String(l.id) !== String(excludeId);
     }), ctx).reasons;
     if (draft.endsAt && draft.startsAt && new Date(draft.endsAt) <= new Date(draft.startsAt)) {
-      errors.push("Время окончания должно быть позже начала");
+      errors.push("╨Т╤А╨╡╨╝╤П ╨╛╨║╨╛╨╜╤З╨░╨╜╨╕╤П ╨┤╨╛╨╗╨╢╨╜╨╛ ╨▒╤Л╤В╤М ╨┐╨╛╨╖╨╢╨╡ ╨╜╨░╤З╨░╨╗╨░");
     }
     return errors;
   }

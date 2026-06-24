@@ -6,7 +6,7 @@
       <section class="card" aria-label="Вход через Keycloak">
         <div class="card-header">
           <h2>Вход в систему</h2>
-          <p>Введите логин и пароль — система сама откроет нужный портал</p>
+          <p>Введите логин и пароль — откроется HR-панель или админ-панель</p>
         </div>
 
         <#if message?has_content && (message.type != 'warning' || !isAppInitiatedAction??)>
@@ -20,7 +20,6 @@
         <div class="dev-hint" role="note">
           <strong>Тестовые учётные записи</strong>
           <span>HR: <code>hr.manager</code> / <code>hr123456</code></span>
-          <span>Преподаватель: <code>teacher.demo</code> / <code>teacher123456</code></span>
           <span>Админ: <code>admin</code> / <code>admin123456</code></span>
         </div>
 
@@ -30,7 +29,7 @@
             <input tabindex="1" id="username" name="username" value="${(login.username!'')}" type="text"
                    autofocus autocomplete="username"
                    aria-invalid="<#if messagesPerField.existsError('username','password')>true</#if>"
-                   placeholder="hr.manager или teacher.demo" />
+                   placeholder="hr.manager или admin" />
           </div>
 
           <div class="field">

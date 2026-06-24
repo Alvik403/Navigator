@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 /**
- * Единая демо-модель MAX RASS.
+ * Единая демо-модель Навигатор.
  * Пользователь: id, ФИО, id_max, телефон, id_роли, статус, id_куратора, страйки
  * Группа: id, id_parent, name, id_hr, createdAt, status (без parent = направление/курс)
  * Участник группы: id_group + id_user + type (student | teacher)

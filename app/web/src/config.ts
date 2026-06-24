@@ -4,7 +4,7 @@ export const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL ?? window.location
 export const REALM = "max-education";
 export const WEB_ORIGIN = import.meta.env.VITE_WEB_ORIGIN ?? window.location.origin;
 
-export type Portal = "hr" | "teacher" | "admin";
+export type Portal = "hr" | "admin";
 
 /** Единая страница входа */
 export const LOGIN_PATH = "/";
@@ -24,11 +24,6 @@ export const PORTALS: Record<
     requiredRoles: ["hr_manager"],
     dashboard: "/hr-dashboard.html",
   },
-  teacher: {
-    title: "Портал преподавателя",
-    requiredRoles: ["teacher"],
-    dashboard: "/teacher-dashboard.html",
-  },
   admin: {
     title: "Панель администратора",
     requiredRoles: [],
@@ -45,7 +40,6 @@ export function canAccessPortal(roles: string[], portal: Portal): boolean {
 export function resolvePortalFromAppRole(roleCode: string | null | undefined): Portal | null {
   if (roleCode === "admin") return "admin";
   if (roleCode === "hr") return "hr";
-  if (roleCode === "teacher") return "teacher";
   return null;
 }
 
@@ -53,9 +47,6 @@ export function resolvePortalFromAppRole(roleCode: string | null | undefined): P
 export function resolvePortalFromRoles(roles: string[]): Portal | null {
   if (canAccessPortal(roles, "hr")) {
     return "hr";
-  }
-  if (canAccessPortal(roles, "teacher")) {
-    return "teacher";
   }
   return null;
 }

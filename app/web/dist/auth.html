@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Вход — MAX RASS</title>
+  <title>Вход — Навигатор</title>
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="icons.css">
   <link rel="stylesheet" href="auth.css">
@@ -114,8 +114,6 @@
       const lower = username.toLowerCase();
       if (lower.includes('admin') || lower.includes('админ')) {
         window.location.href = 'admin-dashboard.html';
-      } else if (lower.includes('teacher') || lower.includes('prep') || lower.includes('prof') || lower.includes('препод')) {
-        window.location.href = 'teacher-dashboard.html';
       } else {
         window.location.href = 'hr-dashboard.html';
       }

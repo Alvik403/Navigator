@@ -58,7 +58,7 @@ def build_lesson_reminder_text(lesson: dict[str, Any], kind: str) -> str:
     spec = REMINDER_SPECS[kind]
     day_label, time_label = _format_starts_at_msk(lesson.get("starts_at"))
     title = lesson.get("lesson_title") or "Занятие"
-    group = lesson.get("group_name") or "—"
+    group = lesson.get("track_name") or lesson.get("group_name") or "—"
     place = lesson.get("place") or "—"
     teacher = f"{lesson.get('teacher_last_name', '')} {lesson.get('teacher_first_name', '')}".strip() or "—"
     lead = spec["lead_label"]
@@ -113,15 +113,19 @@ async def _list_due_lessons(kind: str) -> list[dict[str, Any]]:
     window = timedelta(minutes=LESSON_REMINDER_WINDOW_MIN)
     sql = """
         SELECT l.id::text AS lesson_id, l.starts_at, l.ends_at, l.place, l.lesson_type, l.title,
-               g.name AS group_name, g.id_hr::text AS hr_user_id,
+               t.name AS track_name, COALESCE(t.id_hr, g.id_hr)::text AS hr_user_id,
+               g.name AS group_name, cs.name AS slot_name,
                tp.last_name AS teacher_last_name, tp.first_name AS teacher_first_name,
                COALESCE(l.title, CASE WHEN l.lesson_type = 'practice' THEN 'Практика' ELSE 'Лекция' END)
                    AS lesson_title
         FROM app.lessons l
-        JOIN app.groups g ON g.id = l.group_id
+        LEFT JOIN app.tracks t ON t.id = l.track_id
+        LEFT JOIN app.groups g ON g.id = COALESCE(l.reporting_group_id, l.group_id)
+        LEFT JOIN app.conveyor_slots cs ON cs.id = l.slot_id
         JOIN app.profiles tp ON tp.user_id = l.teacher_id
         WHERE l.starts_at > now()
-          AND g.status = 'active'
+          AND (t.id IS NOT NULL OR g.id IS NOT NULL)
+          AND COALESCE(t.status, g.status, 'active') = 'active'
           AND l.starts_at >= now() + $1::interval - $2::interval
           AND l.starts_at <= now() + $1::interval + $2::interval
         ORDER BY l.starts_at

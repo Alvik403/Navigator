@@ -158,3 +158,9 @@ async def seed_demo_data() -> dict[str, Any]:
     from demo_seed import seed_demo_data as _seed
 
     return await _seed(get_pool())
+
+
+async def seed_formation_test_data() -> dict[str, Any]:
+    from formation_test_seed import seed_formation_test_data as _seed
+
+    return await _seed(get_pool())

@@ -22,7 +22,20 @@ async def notify_max_user(
         return False
     max_id = profile.get("max_id")
     if max_id is None:
-        logger.info("MAX notify skipped: user %s has no max_id", app_user_id)
+        curator_id = profile.get("id_curator")
+        if curator_id:
+            curator = await get_user_profile(str(curator_id))
+            curator_max_id = curator.get("max_id") if curator else None
+            if curator_max_id is not None:
+                name = f"{profile.get('last_name', '')} {profile.get('first_name', '')}".strip()
+                await send_max_message(
+                    None,
+                    f"Уведомление для подопечного {name}:\n\n{text}",
+                    buttons,
+                    user_id=int(curator_max_id),
+                )
+                return True
+        logger.info("MAX notify skipped: user %s has no max_id and no curator MAX", app_user_id)
         return False
     await send_max_message(None, text, buttons, user_id=int(max_id))
     return True
@@ -39,9 +52,9 @@ async def notify_strike_issued(strike: dict[str, Any]) -> bool:
         f"Вам выдан страйк №{strike_number} ({reason}).\n\n"
         f"У вас {active_count} из 3 активных страйков."
     )
-    if strike.get("auto_banned") or active_count >= 3:
+    if strike.get("auto_banned"):
         text += "\n\nДоступ к занятиям заблокирован. Обратитесь к HR или куратору."
-    else:
+    elif strike.get("target_role") == "employee":
         text += "\n\nПри 3 страйках доступ будет заблокирован."
 
     buttons: list[list[dict[str, str]]] | None = None
