@@ -15,12 +15,12 @@
 
         <div class="dev-hint" role="note">
           <strong>Что сделать</strong>
-          <span>1. Разрешите cookies для <code>localhost</code></span>
+          <span>1. Разрешите cookies для этого сайта</span>
           <span>2. Откройте вход заново по ссылке ниже</span>
           <span>3. Используйте логин, не email: <code>hr.manager</code> / <code>admin</code></span>
         </div>
 
-        <a class="btn btn-primary" href="http://localhost:5173/" target="_top">Начать вход заново</a>
+        <a class="btn btn-primary" href="/" target="_top">Начать вход заново</a>
       </section>
     </main>
   </#if>

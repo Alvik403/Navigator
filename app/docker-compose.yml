@@ -37,7 +37,7 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
-      KC_HOSTNAME: http://localhost:5173
+      KC_HOSTNAME: ${WEB_URL:-http://194.156.101.222:5173}
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_HTTP_ENABLED: "true"
@@ -71,8 +71,8 @@ services:
       KEYCLOAK_CLIENT_SECRET: max-auth-service-secret
       MAX_SESSION_TTL: "300"
       MAX_BOT_BASE_URL: https://max.ru/id482403059838_2_bot
-      WEB_RETURN_URL: http://localhost:5173/max
-      WEB_URL: http://localhost:5173
+      WEB_RETURN_URL: ${WEB_RETURN_URL:-http://194.156.101.222:5173/max}
+      WEB_URL: ${WEB_URL:-http://194.156.101.222:5173}
       MAX_AUTH_PAYLOAD_PREFIX: login_
       MAX_RESET_PAYLOAD_PREFIX: reset_
       KEYCLOAK_ADMIN: admin
