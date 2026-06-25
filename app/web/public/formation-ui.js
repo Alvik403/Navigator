@@ -475,6 +475,8 @@
   }
 
   window.FormationUi = {
+    formationTimeChoices: function () { return FORMATION_TIME_CHOICES.slice(); },
+    resolveSlotIdForTime: resolveFormationSlotId,
     formationSlotTime: formationSlotTime,
     monthAdd: monthAdd,
     refreshFormationPlan: refreshFormationPlan,

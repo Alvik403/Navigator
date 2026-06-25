@@ -284,6 +284,72 @@
   background: #fafbfc;
 }
 
+.formation-manual-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.formation-test-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: var(--radius-card);
+  background: #eff6ff;
+}
+
+.formation-test-presets .ui-label {
+  margin: 0;
+  font-size: 12px;
+  color: #1e40af;
+}
+
+.formation-manual-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.formation-member-pick {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: #fff;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.formation-member-pick label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.formation-member-pick label + label {
+  border-top: 1px solid #f1f5f9;
+}
+
+.formation-manual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.formation-manual-note {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .formation-month-nav-wrap {
   display: flex;
   align-items: flex-end;

@@ -484,6 +484,12 @@
     return api.post("/hr/lessons", data);
   }
 
+  async function deleteLesson(lessonId) {
+    var res = await api.del("/hr/lessons/" + lessonId);
+    store.lessons = store.lessons.filter(function (l) { return String(l.id) !== String(lessonId); });
+    return res;
+  }
+
   async function loadTrackAssignments(trackId) {
     var res = await api.get("/hr/tracks/" + trackId + "/assignments");
     store.trackAssignments[trackId] = res.items || [];
@@ -727,6 +733,20 @@
     return store.conveyorSlots.slice();
   }
 
+  async function runLessonReminders() {
+    var response = await fetch("/api/v1/db/lesson-reminders/run", { method: "POST" });
+    var payload = null;
+    try {
+      payload = await response.json();
+    } catch (_error) {
+      payload = null;
+    }
+    if (!response.ok) {
+      throw new Error((payload && payload.detail) || response.statusText || "Ошибка запуска напоминаний");
+    }
+    return payload;
+  }
+
   global.HrApi = {
     bootstrap: bootstrap,
     refresh: refresh,
@@ -741,6 +761,7 @@
     patchUserStatus: patchUserStatus,
     listLessons: listLessons,
     createLesson: createLesson,
+    deleteLesson: deleteLesson,
     createTrack: createTrack,
     updateTrack: updateTrack,
     deleteTrack: deleteTrack,
@@ -778,5 +799,6 @@
     parseFio: parseFio,
     apiRoleCode: apiRoleCode,
     getConveyorSlots: getConveyorSlots,
+    runLessonReminders: runLessonReminders,
   };
 })(window);

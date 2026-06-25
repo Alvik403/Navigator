@@ -153,14 +153,14 @@ class HrCreateLessonBody(BaseModel):
 class SmuPatternBody(BaseModel):
     code: str = Field(min_length=1, max_length=80)
     name: str = Field(min_length=1, max_length=255)
-    work_days: int = Field(default=2, ge=1)
-    off_days: int = Field(default=2, ge=0)
+    work_days: int = Field(default=0, ge=0)
+    off_days: int = Field(default=0, ge=0)
     anchor_date: date | None = None
 
 
 class SmuPatternUpdateBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    work_days: int | None = Field(default=None, ge=1)
+    work_days: int | None = Field(default=None, ge=0)
     off_days: int | None = Field(default=None, ge=0)
     anchor_date: date | None = None
     target_shift1: int | None = Field(default=None, ge=0)

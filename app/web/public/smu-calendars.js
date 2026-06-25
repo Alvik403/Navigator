@@ -14,6 +14,11 @@
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   }
 
+  function isManualPattern(pattern) {
+    const cycle = (parseInt(pattern.work_days, 10) || 0) + (parseInt(pattern.off_days, 10) || 0);
+    return cycle <= 0;
+  }
+
   function shiftAnchorDate(pattern, shiftNumber) {
     const base = String(pattern.anchor_date || "").slice(0, 10);
     const work = parseInt(pattern.work_days, 10) || 0;
@@ -38,10 +43,11 @@
   }
 
   function isWorkDayFormula(pattern, dateStr, shiftNumber) {
+    if (isManualPattern(pattern)) return false;
     const work = pattern.work_days || 0;
     const off = pattern.off_days || 0;
     const cycle = work + off;
-    if (cycle <= 0) return true;
+    if (cycle <= 0) return false;
     const anchor = new Date(shiftAnchorDate(pattern, shiftNumber) + "T12:00:00");
     const target = new Date(dateStr + "T12:00:00");
     const delta = Math.round((target - anchor) / 86400000);
@@ -74,6 +80,7 @@
     if (mode === "extra") cls += " is-extra";
     else if (mode === "work") cls += " is-force-work";
     else if (mode === "off") cls += " is-force-off";
+    else if (isManualPattern(pattern)) cls += " is-empty";
     else cls += working ? " is-work" : " is-off";
     if (dateStr === selectedDate) cls += " selected";
     if (dateStr === today) cls += " today";
@@ -81,6 +88,7 @@
   }
 
   function cycleHint(pattern) {
+    if (isManualPattern(pattern)) return "вручную";
     const w = pattern.work_days || 2;
     const o = pattern.off_days || 2;
     return w + " д · " + o + " в";
@@ -88,7 +96,12 @@
 
   function cellTitle(getOverrideMode, pattern, dateStr, shiftNumber) {
     const mode = overrideMode(getOverrideMode, pattern.id, dateStr, shiftNumber);
-    const labels = { auto: "по графику", work: "рабочий", off: "выходной", extra: "допсмена" };
+    const labels = {
+      auto: isManualPattern(pattern) ? "не задано" : "по графику",
+      work: "рабочий",
+      off: "выходной",
+      extra: "допсмена",
+    };
     return labels[mode] || labels.auto;
   }
 
@@ -109,10 +122,11 @@
       cells += `<button type="button" class="${cls}" data-smu-override-date="${ds}" data-smu-override-shift="${shiftNumber}" title="${title}">${day}</button>`;
     }
     const meta = SHIFTS.find(s => s.n === shiftNumber);
+    const hint = isManualPattern(pattern) ? "заполните вручную" : cycleHint(pattern);
     return `<div class="smu-shift-cal-panel shift-${shiftNumber}">
       <div class="smu-shift-cal-head">
         <strong>${meta ? meta.title : "Смена " + shiftNumber}</strong>
-        <span class="stat-mini">${meta ? meta.sub : ""} · ${cycleHint(pattern)}</span>
+        <span class="stat-mini">${meta ? meta.sub : ""} · ${hint}</span>
       </div>
       <div class="smu-cal-grid smu-cal-grid--single-shift">${cells}</div>
     </div>`;
@@ -141,6 +155,7 @@
 
   window.SmuCalendars = {
     SHIFTS: SHIFTS,
+    isManualPattern: isManualPattern,
     shiftNumbers: function () { return SHIFTS.map(s => s.n); },
     shiftAnchorDate: shiftAnchorDate,
     shiftLabel: shiftLabel,

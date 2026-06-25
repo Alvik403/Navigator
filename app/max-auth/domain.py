@@ -963,7 +963,7 @@ async def update_track_formation_settings(
 def _smu_is_work_day(work_days: int, off_days: int, anchor: date, target: date) -> bool:
     cycle = work_days + off_days
     if cycle <= 0:
-        return True
+        return False
     delta = (target - anchor).days
     pos = delta % cycle
     return pos < work_days
@@ -987,8 +987,8 @@ async def create_smu_pattern(
     *,
     code: str,
     name: str,
-    work_days: int = 2,
-    off_days: int = 2,
+    work_days: int = 0,
+    off_days: int = 0,
     anchor_date: date | None = None,
 ) -> dict[str, Any]:
     sql = """

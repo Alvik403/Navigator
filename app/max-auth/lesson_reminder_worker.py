@@ -27,15 +27,17 @@ LESSON_REMINDER_ENABLED = os.getenv("LESSON_REMINDER_ENABLED", "true").strip().l
 REMINDER_SPECS: dict[str, dict[str, Any]] = {
     "lesson_reminder_1d": {
         "offset": timedelta(hours=24),
-        "lead_label": "Завтра",
+        "icon": "🔔",
         "prefix": "Напоминание о занятии",
     },
     "lesson_reminder_3h": {
         "offset": timedelta(hours=3),
-        "lead_label": "Через 3 часа",
+        "icon": "⏰",
         "prefix": "Скоро занятие",
     },
 }
+
+_GENERIC_LESSON_TITLES = frozenset({"Занятие", "Практика", "Лекция"})
 
 
 def _format_starts_at_msk(value: Any) -> tuple[str, str]:
@@ -49,31 +51,75 @@ def _format_starts_at_msk(value: Any) -> tuple[str, str]:
         dt = dt.replace(tzinfo=ZoneInfo("UTC"))
     local = dt.astimezone(APP_TIMEZONE)
     now_local = datetime.now(APP_TIMEZONE)
-    day_label = "Сегодня" if local.date() == now_local.date() else "Завтра" if local.date() == now_local.date() + timedelta(days=1) else local.strftime("%d.%m.%Y")
+    if local.date() == now_local.date():
+        day_label = "Сегодня"
+    elif local.date() == now_local.date() + timedelta(days=1):
+        day_label = "Завтра"
+    else:
+        day_label = local.strftime("%d.%m.%Y")
     time_label = local.strftime("%H:%M")
     return day_label, time_label
+
+
+def _lesson_type_label(lesson_type: Any) -> str | None:
+    if lesson_type == "practice":
+        return "Практика"
+    if lesson_type == "lecture":
+        return "Лекция"
+    return None
+
+
+def _teacher_display(lesson: dict[str, Any]) -> str | None:
+    parts = [
+        lesson.get("teacher_last_name"),
+        lesson.get("teacher_first_name"),
+        lesson.get("teacher_middle_name"),
+    ]
+    name = " ".join(str(part).strip() for part in parts if part and str(part).strip())
+    return name or None
 
 
 def build_lesson_reminder_text(lesson: dict[str, Any], kind: str) -> str:
     spec = REMINDER_SPECS[kind]
     day_label, time_label = _format_starts_at_msk(lesson.get("starts_at"))
-    title = lesson.get("lesson_title") or "Занятие"
-    group = lesson.get("track_name") or lesson.get("group_name") or "—"
-    place = lesson.get("place") or "—"
-    teacher = f"{lesson.get('teacher_last_name', '')} {lesson.get('teacher_first_name', '')}".strip() or "—"
-    lead = spec["lead_label"]
-    if kind == "lesson_reminder_1d":
-        when_line = f"📅 {day_label}, {time_label} (МСК)"
-    else:
-        when_line = f"📅 {lead}: {day_label}, {time_label} (МСК)"
-    return (
-        f"{spec['prefix']}\n\n"
-        f"📁 {group}\n"
-        f"📚 {title}\n"
-        f"{when_line}\n"
-        f"📍 {place}\n"
-        f"👤 Преподаватель: {teacher}"
-    )
+
+    track = str(lesson.get("track_name") or lesson.get("group_name") or "").strip()
+    title = str(lesson.get("lesson_title") or lesson.get("title") or "").strip()
+    type_label = _lesson_type_label(lesson.get("lesson_type"))
+    place = str(lesson.get("place") or "").strip()
+    teacher = _teacher_display(lesson)
+
+    header_parts = [part for part in (track, type_label) if part]
+    header = " · ".join(header_parts) if header_parts else "Занятие"
+
+    lines = [
+        f"{spec['icon']} {spec['prefix']}",
+        "────────────────",
+        "",
+        header,
+    ]
+
+    if title and title not in _GENERIC_LESSON_TITLES and title != type_label:
+        lines.append(title)
+
+    lines.extend(["", f"🕐 {day_label} в {time_label} (МСК)"])
+    if kind == "lesson_reminder_3h":
+        lines.append("   через ~3 часа")
+    elif kind == "lesson_reminder_1d" and day_label not in {"Сегодня", "Завтра"}:
+        lines.append("   за сутки до начала")
+
+    detail_lines: list[str] = []
+    if place:
+        detail_lines.append(f"📍 {place}")
+    if teacher:
+        detail_lines.append(f"👤 {teacher}")
+    elif lesson.get("teacher_id"):
+        detail_lines.append("👤 Инструктор уточняется")
+
+    if detail_lines:
+        lines.extend(["", *detail_lines])
+
+    return "\n".join(lines)
 
 
 async def _notification_exists(user_id: str, lesson_id: str, kind: str) -> bool:
@@ -113,16 +159,18 @@ async def _list_due_lessons(kind: str) -> list[dict[str, Any]]:
     window = timedelta(minutes=LESSON_REMINDER_WINDOW_MIN)
     sql = """
         SELECT l.id::text AS lesson_id, l.starts_at, l.ends_at, l.place, l.lesson_type, l.title,
+               l.teacher_id::text AS teacher_id,
                t.name AS track_name, COALESCE(t.id_hr, g.id_hr)::text AS hr_user_id,
                g.name AS group_name, cs.name AS slot_name,
                tp.last_name AS teacher_last_name, tp.first_name AS teacher_first_name,
+               tp.middle_name AS teacher_middle_name,
                COALESCE(l.title, CASE WHEN l.lesson_type = 'practice' THEN 'Практика' ELSE 'Лекция' END)
                    AS lesson_title
         FROM app.lessons l
         LEFT JOIN app.tracks t ON t.id = l.track_id
         LEFT JOIN app.groups g ON g.id = COALESCE(l.reporting_group_id, l.group_id)
         LEFT JOIN app.conveyor_slots cs ON cs.id = l.slot_id
-        JOIN app.profiles tp ON tp.user_id = l.teacher_id
+        LEFT JOIN app.profiles tp ON tp.user_id = l.teacher_id
         WHERE l.starts_at > now()
           AND (t.id IS NOT NULL OR g.id IS NOT NULL)
           AND COALESCE(t.status, g.status, 'active') = 'active'

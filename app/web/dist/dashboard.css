@@ -675,11 +675,43 @@
 
 .schedule-lesson-card {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) auto;
+  grid-template-columns: 88px minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: center;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
+}
+
+.schedule-lesson-delete {
+  flex-shrink: 0;
+  min-width: 32px;
+  padding: 6px 8px;
+}
+
+.cal-lesson-block.hr-lesson-block {
+  padding-right: 22px;
+}
+
+.cal-lesson-delete {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #b91c1c;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.cal-lesson-block.hr-lesson-block:hover .cal-lesson-delete {
+  opacity: 1;
 }
 
 .schedule-lesson-card:last-child {

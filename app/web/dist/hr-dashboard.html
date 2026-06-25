@@ -392,6 +392,8 @@
     smuExtraForm: { userId: "", date: "", shift: 1, note: "" },
     smuOverridesLoadedKey: null,
     smuScheduleEditMode: true,
+    smuDraftOverrides: {},
+    smuCreateMonth: "",
     formationResult: null,
     formationView: "plan",
     formationPlanMonth: "",
@@ -3033,6 +3035,141 @@
     if (prev !== state.selectedSmuId) renderSmuDetail();
   }
 
+  const SMU_DRAFT_ID = "__draft__";
+
+  function smuIsManualPattern(pattern) {
+    return SmuCalendars.isManualPattern?.(pattern) ?? ((parseInt(pattern?.work_days, 10) || 0) + (parseInt(pattern?.off_days, 10) || 0) <= 0);
+  }
+
+  function isSmuDraftPattern(pattern) {
+    return pattern && String(pattern.id) === SMU_DRAFT_ID;
+  }
+
+  function smuDraftPattern() {
+    return {
+      id: SMU_DRAFT_ID,
+      code: ($("#newSmuCode")?.value || "").trim(),
+      name: ($("#newSmuName")?.value || "").trim(),
+      work_days: 0,
+      off_days: 0,
+      status: "active",
+    };
+  }
+
+  function smuDraftOverrideKey(dateStr, shiftNumber) {
+    return `${dateStr}:${shiftNumber}`;
+  }
+
+  function smuMonthDayStrings(monthVal) {
+    const [y, m] = String(monthVal || "").split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const days = [];
+    for (let day = 1; day <= lastDay; day++) {
+      days.push(`${monthVal}-${String(day).padStart(2, "0")}`);
+    }
+    return days;
+  }
+
+  function smuVirtualPattern22(anchorDate) {
+    return { work_days: 2, off_days: 2, anchor_date: String(anchorDate || localDateStr(new Date())).slice(0, 10) };
+  }
+
+  function computeSmuPresetOverrides(formulaPattern, monthVal) {
+    const items = [];
+    smuMonthDayStrings(monthVal).forEach(dateStr => {
+      [1, 2, 3, 4].forEach(shift => {
+        const working = SmuCalendars.isWorkDayFormula(formulaPattern, dateStr, shift);
+        items.push({ dateStr, shift, state: working ? "work" : "off" });
+      });
+    });
+    return items;
+  }
+
+  function clearSmuDraftMonth(monthVal) {
+    const prefix = `${monthVal}-`;
+    Object.keys(state.smuDraftOverrides || {}).forEach(key => {
+      if (key.startsWith(prefix)) delete state.smuDraftOverrides[key];
+    });
+  }
+
+  function fillSmuDraftMonth22(anchorDate, monthVal) {
+    const formula = smuVirtualPattern22(anchorDate);
+    computeSmuPresetOverrides(formula, monthVal).forEach(({ dateStr, shift, state: dayState }) => {
+      state.smuDraftOverrides[smuDraftOverrideKey(dateStr, shift)] = dayState;
+    });
+    renderSmuCreateCyclePreview();
+    refreshSmuCalendarGridHost(smuDraftPattern());
+    showToast(`Месяц заполнен по шаблону 2/2 (якорь ${formula.anchor_date})`, "success");
+  }
+
+  async function fillSmuPatternMonth22(pattern, anchorDate, monthVal) {
+    const formula = smuVirtualPattern22(anchorDate);
+    const label = formatSmuDateRu(formula.anchor_date);
+    if (!window.confirm(`Заполнить ${monthVal} по шаблону 2/2?\nЯкорь: ${label}\nТекущие отметки за этот месяц будут перезаписаны.`)) return;
+    const items = computeSmuPresetOverrides(formula, monthVal);
+    for (const item of items) {
+      await HrApi.setSmuPatternOverride(pattern.id, item.dateStr, item.shift, item.state);
+    }
+    if (String(pattern.anchor_date || "").slice(0, 10) !== formula.anchor_date) {
+      await HrApi.updateSmuPattern(pattern.id, { anchor_date: formula.anchor_date, work_days: 0, off_days: 0 });
+      await reloadData();
+    }
+    state.smuOverridesLoadedKey = null;
+    const fresh = getSelectedSmuPattern() || pattern;
+    await ensureSmuOverridesLoaded(fresh, monthVal);
+    refreshSmuCalendarGridHost(fresh);
+    showToast(`График заполнен: 2/2 · ${items.length} отметок`, "success");
+  }
+
+  async function clearSmuPatternMonth(pattern, monthVal) {
+    if (!window.confirm(`Очистить все отметки за ${monthVal}?`)) return;
+    const bounds = smuMonthBounds(monthVal);
+    await HrApi.clearSmuPatternOverrides(pattern.id, bounds.from, bounds.to);
+    state.smuOverridesLoadedKey = null;
+    refreshSmuCalendarGridHost(pattern);
+    showToast("Отметки за месяц удалены", "success");
+  }
+
+  function renderSmuCreateCyclePreview() {
+    const host = $("#smuCreateCyclePreview");
+    if (!host) return;
+    const anchor = $("#newSmuAnchor")?.value || localDateStr(new Date());
+    const pattern = smuVirtualPattern22(anchor);
+    host.innerHTML = `<div class="smu-config-visual smu-config-visual--compact">
+      ${SmuCalendars.SHIFTS.map(s => `<div class="smu-config-row"><span class="smu-config-label">${s.title} · ${s.sub}</span>${smuPatternCycleBar(pattern, s.n)}</div>`).join("")}
+    </div>`;
+  }
+
+  function smuCalPresetToolbarHtml(options) {
+    const prefix = options.prefix || "";
+    const anchorVal = options.anchorValue || localDateStr(new Date());
+    return `<div class="smu-cal-preset-toolbar">
+      <div class="smu-preset-row smu-preset-row--inline">
+        <span class="smu-preset-label">Шаблон 2/2:</span>
+        <button type="button" class="smu-preset-chip smu-preset-chip--day" id="${prefix}SmuFill22Btn">
+          <span class="smu-preset-chip-title">2/2</span>
+          <span class="smu-preset-chip-sub">заполнить месяц</span>
+        </button>
+        <button type="button" class="btn small secondary" id="${prefix}SmuClearMonthBtn">Очистить месяц</button>
+        <div class="smu-anchor-field"><label class="ui-label" for="${prefix}SmuAnchor">Якорь цикла</label><input type="date" id="${prefix}SmuAnchor" class="cell-input" value="${anchorVal}"></div>
+      </div>
+    </div>`;
+  }
+
+  async function deleteHrLesson(lesson) {
+    const title = lesson.title || lesson.track_name || "занятие";
+    const when = [lesson.date, lesson.time].filter(Boolean).join(" ");
+    if (!window.confirm(`Удалить занятие «${title}»${when ? `\n${when}` : ""}?\n\nУчастники и отметки будут удалены.`)) return;
+    try {
+      await HrApi.deleteLesson(lesson.id);
+      await reloadData();
+      showToast("Занятие удалено", "success");
+      renderHrSchedule();
+    } catch (err) {
+      showToast(err.message || "Не удалось удалить", "error");
+    }
+  }
+
   function smuShiftAnchorDate(pattern, shiftNumber) {
     return SmuCalendars.shiftAnchorDate(pattern, shiftNumber);
   }
@@ -3042,6 +3179,10 @@
   }
 
   function smuOverrideRecord(patternId, dateStr, shiftNumber) {
+    if (String(patternId) === SMU_DRAFT_ID) {
+      const stateVal = state.smuDraftOverrides[smuDraftOverrideKey(dateStr, shiftNumber)];
+      return stateVal ? { state: stateVal } : null;
+    }
     return D.smuOverrideAt?.(patternId, dateStr, shiftNumber) || null;
   }
 
@@ -3062,7 +3203,7 @@
     const formula = smuIsWorkDay(pattern, dateStr, shiftNumber);
     const effective = smuEffectiveWorkDay(pattern, dateStr, shiftNumber);
     const shiftLabel = shiftNumber === 2 ? "Ночь (С2)" : "День (С1)";
-    const modeLabel = mode === "work" ? "принудительно рабочий" : mode === "off" ? "принудительно выходной" : `по формуле ${pattern.work_days}/${pattern.off_days}`;
+    const modeLabel = mode === "work" ? "рабочий" : mode === "off" ? "выходной" : mode === "extra" ? "допсмена" : (smuIsManualPattern(pattern) ? "не задано" : `по формуле ${pattern.work_days}/${pattern.off_days}`);
     const status = effective ? "рабочий" : "выходной";
     return `${shiftLabel}: ${status} · ${modeLabel}${mode === "auto" ? (formula ? "" : " (формула: вых.)") : ""} · клик — сменить`;
   }
@@ -3102,19 +3243,33 @@
   }
 
   async function setSmuOverrideState(pattern, dateStr, shiftNumber, stateVal) {
+    const labels = { work: "Рабочий", off: "Выходной", extra: "Допсмена", auto: "Не задано" };
     try {
-      await HrApi.setSmuPatternOverride(pattern.id, dateStr, shiftNumber, stateVal);
-      const labels = { work: "Рабочий", off: "Выходной", extra: "Допсмена", auto: "По графику" };
-      showToast(`${SmuCalendars.shiftShort(shiftNumber)} · ${formatSmuDayShort(dateStr)} → ${labels[stateVal] || stateVal}`, "success");
-      const monthVal = state.smuCalendarMonth || dateStr.slice(0, 7);
-      const gridHost = $("#smuCalGridHost");
-      if (gridHost) {
-        gridHost.innerHTML = renderSmuCalendarGrid(pattern, monthVal);
-        bindSmuCalendarClicks(pattern);
+      if (isSmuDraftPattern(pattern)) {
+        const key = smuDraftOverrideKey(dateStr, shiftNumber);
+        if (stateVal === "auto") delete state.smuDraftOverrides[key];
+        else state.smuDraftOverrides[key] = stateVal;
+        showToast(`${SmuCalendars.shiftShort(shiftNumber)} · ${formatSmuDayShort(dateStr)} → ${labels[stateVal] || stateVal}`, "success");
+        refreshSmuCalendarGridHost(pattern);
+        return;
       }
+      await HrApi.setSmuPatternOverride(pattern.id, dateStr, shiftNumber, stateVal);
+      showToast(`${SmuCalendars.shiftShort(shiftNumber)} · ${formatSmuDayShort(dateStr)} → ${labels[stateVal] || stateVal}`, "success");
+      refreshSmuCalendarGridHost(pattern);
     } catch (err) {
       showToast(err.message || "Не удалось сохранить день", "error");
       throw err;
+    }
+  }
+
+  function refreshSmuCalendarGridHost(pattern) {
+    const monthVal = isSmuDraftPattern(pattern)
+      ? (state.smuCreateMonth || localDateStr(new Date()).slice(0, 7))
+      : (state.smuCalendarMonth || localDateStr(new Date()).slice(0, 7));
+    const gridHost = isSmuDraftPattern(pattern) ? $("#smuCreateCalGridHost") : $("#smuCalGridHost");
+    if (gridHost) {
+      gridHost.innerHTML = renderSmuCalendarGrid(pattern, monthVal);
+      bindSmuCalendarClicks(pattern, isSmuDraftPattern(pattern) ? "#smuCreateCalGridHost" : "#smuCalGridHost");
     }
   }
 
@@ -3129,28 +3284,69 @@
 
   function showSmuCellPicker(pattern, dateStr, shiftNumber, anchorEl) {
     closeSmuCellPicker();
-    const current = smuOverrideMode(pattern.id, dateStr, shiftNumber);
+    let selectedShift = parseInt(shiftNumber, 10) || 1;
+    let step = 2;
+
     const picker = document.createElement("div");
     picker.id = "smuCellPicker";
-    picker.className = "smu-cell-picker";
-    picker.innerHTML = `<div class="smu-cell-picker-title">${formatSmuDayShort(dateStr)} · ${SmuCalendars.shiftShort(shiftNumber)}</div>
-      <button type="button" class="smu-cell-pick ${current === "work" ? "active" : ""}" data-pick-state="work">Рабочий</button>
-      <button type="button" class="smu-cell-pick ${current === "off" ? "active" : ""}" data-pick-state="off">Выходной</button>
-      <button type="button" class="smu-cell-pick ${current === "extra" ? "active" : ""}" data-pick-state="extra">Допсмена</button>
-      ${current !== "auto" ? `<button type="button" class="smu-cell-pick smu-cell-pick--reset" data-pick-state="auto">По графику</button>` : ""}`;
+    picker.className = "smu-cell-picker smu-cell-picker--steps";
+
+    function paint() {
+      const shiftMeta = SmuCalendars.SHIFTS.find(s => s.n === selectedShift);
+      if (step === 1) {
+        picker.innerHTML = `<div class="smu-cell-picker-title">${formatSmuDayShort(dateStr)}</div>
+          <div class="smu-cell-picker-step-label">1. Смена</div>
+          <div class="smu-cell-picker-shifts">${SmuCalendars.SHIFTS.map(s => {
+            const active = s.n === selectedShift ? " active" : "";
+            const kindCls = s.kind === "night" ? "smu-cell-shift--night" : "smu-cell-shift--day";
+            return `<button type="button" class="smu-cell-shift ${kindCls}${active}" data-pick-shift="${s.n}">
+              <span class="smu-cell-shift-kind">${s.sub}</span>
+              <span class="smu-cell-shift-num">${s.title}</span>
+            </button>`;
+          }).join("")}</div>`;
+        picker.querySelectorAll("[data-pick-shift]").forEach(btn => {
+          btn.onclick = (ev) => {
+            ev.stopPropagation();
+            selectedShift = parseInt(btn.dataset.pickShift, 10) || 1;
+            step = 2;
+            paint();
+          };
+        });
+        return;
+      }
+
+      const current = smuOverrideMode(pattern.id, dateStr, selectedShift);
+      picker.innerHTML = `<div class="smu-cell-picker-title">${formatSmuDayShort(dateStr)}</div>
+        <div class="smu-cell-picker-step-label">2. Статус · ${shiftMeta ? `${shiftMeta.sub} (${shiftMeta.title})` : `С${selectedShift}`}</div>
+        <button type="button" class="smu-cell-pick smu-cell-pick--reset" data-pick-step="1">← Смена</button>
+        <div class="smu-cell-picker-status">
+          <button type="button" class="smu-cell-pick smu-cell-pick--work${current === "work" ? " active" : ""}" data-pick-state="work">Рабочий</button>
+          <button type="button" class="smu-cell-pick smu-cell-pick--off${current === "off" ? " active" : ""}" data-pick-state="off">Выходной</button>
+          <button type="button" class="smu-cell-pick smu-cell-pick--extra${current === "extra" ? " active" : ""}" data-pick-state="extra">Допсмена</button>
+        </div>
+        ${current !== "auto" ? `<button type="button" class="smu-cell-pick smu-cell-pick--reset" data-pick-state="auto">Очистить</button>` : ""}`;
+
+      picker.querySelector("[data-pick-step]")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        step = 1;
+        paint();
+      });
+      picker.querySelectorAll("[data-pick-state]").forEach(btn => {
+        btn.onclick = (ev) => {
+          ev.stopPropagation();
+          setSmuOverrideState(pattern, dateStr, selectedShift, btn.dataset.pickState).catch(err => showToast(err.message || "Ошибка", "error"));
+          closeSmuCellPicker();
+        };
+      });
+    }
+
     const rect = anchorEl.getBoundingClientRect();
     picker.style.position = "absolute";
     picker.style.top = `${rect.bottom + window.scrollY + 4}px`;
-    picker.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 200)}px`;
+    picker.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 260)}px`;
     picker.style.zIndex = "1000";
     document.body.appendChild(picker);
-    picker.querySelectorAll("[data-pick-state]").forEach(btn => {
-      btn.onclick = (ev) => {
-        ev.stopPropagation();
-        setSmuOverrideState(pattern, dateStr, shiftNumber, btn.dataset.pickState).catch(err => showToast(err.message || "Ошибка", "error"));
-        closeSmuCellPicker();
-      };
-    });
+    paint();
     setTimeout(() => document.addEventListener("click", smuCellPickerOutsideClose, true), 0);
   }
 
@@ -3706,15 +3902,27 @@
   }
 
   function smuPreviewBlockHtml(pattern, monthVal, editable) {
-    const w = pattern.work_days || 2;
-    const o = pattern.off_days || 2;
+    const manual = smuIsManualPattern(pattern);
+    const title = editable ? "График" : "Предпросмотр";
+    const hint = manual ? "вручную · 4 смены" : `${pattern.work_days || 2} д · ${pattern.off_days || 2} в · 4 смены`;
+    const gridHostId = isSmuDraftPattern(pattern) ? "smuCreateCalGridHost" : "smuCalGridHost";
+    const body = editable
+      ? `<div class="smu-cal-loading" id="smuCalLoading">Загрузка…</div><div id="${gridHostId}"></div>`
+      : renderSmuCalendarGrid(pattern, monthVal);
+    if (manual) {
+      return `<div class="smu-preview-box">
+        <div class="smu-preview-title">${title} · ${hint}</div>
+        ${smuLegendHtml()}
+        ${body}
+      </div>`;
+    }
     return `<div class="smu-preview-box">
-      <div class="smu-preview-title">${editable ? "График" : "Предпросмотр"} · ${w} д · ${o} в · 4 смены</div>
+      <div class="smu-preview-title">${title} · ${hint}</div>
       <div class="smu-config-visual smu-config-visual--compact">
         ${SmuCalendars.SHIFTS.map(s => `<div class="smu-config-row"><span class="smu-config-label">${s.title}</span>${smuPatternCycleBar(pattern, s.n)}</div>`).join("")}
       </div>
       ${smuLegendHtml()}
-      ${editable ? `<div class="smu-cal-loading" id="smuCalLoading">Загрузка…</div><div id="smuCalGridHost"></div>` : renderSmuCalendarGrid(pattern, monthVal)}
+      ${body}
     </div>`;
   }
 
@@ -3727,45 +3935,58 @@
     return new Set(smuAssignments().filter(a => String(a.smu_pattern_id) === String(patternId)).map(a => a.user_id));
   }
 
-  function renderSmuCreatePreview() {
-    const host = $("#smuCreatePreview");
+  function renderSmuCreateCalendarSection() {
+    const host = $("#smuCreateCalHost");
     if (!host) return;
-    const pattern = {
-      work_days: parseInt($("#newSmuWork")?.value, 10) || 2,
-      off_days: parseInt($("#newSmuOff")?.value, 10) || 2,
-      anchor_date: $("#newSmuAnchor")?.value || localDateStr(new Date()),
+    if (!state.smuCreateMonth) state.smuCreateMonth = localDateStr(new Date()).slice(0, 7);
+    const pattern = smuDraftPattern();
+    const monthVal = state.smuCreateMonth;
+    host.innerHTML = `<div class="smu-cal-toolbar smu-cal-toolbar--top">
+        <button type="button" class="btn small secondary smu-month-nav" data-smu-create-month-delta="-1">‹</button>
+        <input type="month" id="smuCreateCalendarMonth" value="${monthVal}" class="cell-input smu-month-input">
+        <button type="button" class="btn small secondary smu-month-nav" data-smu-create-month-delta="1">›</button>
+        <button type="button" class="btn small secondary" id="smuCreateTodayBtn">Сегодня</button>
+      </div>
+      ${smuCalPresetToolbarHtml({ prefix: "smuCreate", anchorValue: $("#newSmuAnchor")?.value || localDateStr(new Date()) })}
+      <div id="smuCreateCyclePreview"></div>
+      ${smuPreviewBlockHtml(pattern, monthVal, true)}`;
+    const loading = $("#smuCalLoading");
+    if (loading) loading.remove();
+    const gridHost = $("#smuCreateCalGridHost");
+    if (gridHost) {
+      gridHost.innerHTML = renderSmuCalendarGrid(pattern, monthVal);
+      bindSmuCalendarClicks(pattern, "#smuCreateCalGridHost");
+    }
+    host.querySelectorAll("[data-smu-create-month-delta]").forEach(btn => btn.onclick = () => {
+      state.smuCreateMonth = smuMonthAdd(state.smuCreateMonth, parseInt(btn.dataset.smuCreateMonthDelta, 10));
+      closeSmuCellPicker();
+      renderSmuCreateCalendarSection();
+    });
+    $("#smuCreateTodayBtn").onclick = () => {
+      state.smuCreateMonth = localDateStr(new Date()).slice(0, 7);
+      closeSmuCellPicker();
+      renderSmuCreateCalendarSection();
     };
-    const monthVal = (pattern.anchor_date || localDateStr(new Date())).slice(0, 7);
-    host.innerHTML = smuPreviewBlockHtml(pattern, monthVal, false);
+    $("#smuCreateCalendarMonth").onchange = e => {
+      state.smuCreateMonth = e.target.value;
+      closeSmuCellPicker();
+      renderSmuCreateCalendarSection();
+    };
+    renderSmuCreateCyclePreview();
+    $("#newSmuAnchor")?.addEventListener("change", renderSmuCreateCyclePreview);
+    $("#smuCreateSmuFill22Btn")?.addEventListener("click", () => {
+      fillSmuDraftMonth22($("#smuCreateSmuAnchor")?.value || localDateStr(new Date()), state.smuCreateMonth);
+    });
+    $("#smuCreateSmuClearMonthBtn")?.addEventListener("click", () => {
+      clearSmuDraftMonth(state.smuCreateMonth);
+      renderSmuCreateCyclePreview();
+      refreshSmuCalendarGridHost(smuDraftPattern());
+      showToast("Отметки за месяц очищены", "info");
+    });
   }
 
-  function bindSmuCreatePreview() {
-    ["newSmuWork", "newSmuOff", "newSmuAnchor"].forEach(id => {
-      const el = document.getElementById(id);
-      if (!el || el.dataset.smuPreviewBound) return;
-      el.dataset.smuPreviewBound = "1";
-      el.addEventListener("input", renderSmuCreatePreview);
-      el.addEventListener("change", renderSmuCreatePreview);
-    });
-    document.querySelectorAll("[data-new-smu-preset]").forEach(btn => {
-      if (btn.dataset.smuPresetBound) return;
-      btn.dataset.smuPresetBound = "1";
-      btn.addEventListener("click", () => {
-        const preset = btn.dataset.newSmuPreset;
-        if (preset === "2-2") {
-          $("#newSmuWork").value = "2";
-          $("#newSmuOff").value = "2";
-          if (!$("#newSmuName").value.trim()) $("#newSmuName").value = "СМУ (2/2 · 4 смены)";
-        } else if (preset === "3-3") {
-          $("#newSmuWork").value = "3";
-          $("#newSmuOff").value = "3";
-          if (!$("#newSmuName").value.trim()) $("#newSmuName").value = "СМУ (3/3)";
-        }
-        renderSmuCreatePreview();
-        showToast("Шаблон подставлен — проверьте превью и создайте СМУ", "success");
-      });
-    });
-    renderSmuCreatePreview();
+  function bindSmuCreateForm() {
+    renderSmuCreateCalendarSection();
   }
 
   async function assignUserToSmu(userId, patternId, userName, currentAssignment, shiftNumber) {
@@ -3930,8 +4151,8 @@
     }
   }
 
-  function bindSmuCalendarClicks(pattern) {
-    const host = $("#smuCalGridHost");
+  function bindSmuCalendarClicks(pattern, hostSelector = "#smuCalGridHost") {
+    const host = document.querySelector(hostSelector);
     if (!host) return;
     SmuCalendars.bindCellPick(host, pattern, (p, dateStr, shiftNum, el) => {
       showSmuCellPicker(p, dateStr, shiftNum, el);
@@ -3946,7 +4167,7 @@
       const active = String(p.id) === String(state.selectedSmuId);
       return `<button type="button" class="smu-list-item${active ? " active" : ""}" data-smu-id="${p.id}">
         <div class="smu-list-name">${p.name}</div>
-        <div class="smu-list-code">${p.code} · ${p.work_days} д · ${p.off_days} в</div>
+        <div class="smu-list-code">${p.code} · ${SmuCalendars.cycleHint(p)}</div>
       </button>`;
     }).join("") : `<div class="empty smu-sidebar-empty">${state.search.smu ? "Ничего не найдено" : "Нет паттернов СМУ"}</div>`;
     host.querySelectorAll("[data-smu-id]").forEach(btn => btn.onclick = () => {
@@ -3974,15 +4195,12 @@
         <button type="button" class="btn small secondary smu-month-nav" data-smu-month-delta="1">›</button>
         <button type="button" class="btn small secondary" id="smuTodayBtn">Сегодня</button>
       </div>
+      ${smuCalPresetToolbarHtml({ prefix: "smuDetail", anchorValue: String(pattern.anchor_date || localDateStr(new Date())).slice(0, 10) })}
       ${smuPreviewBlockHtml(pattern, monthVal, true)}`;
     ensureSmuOverridesLoaded(pattern, monthVal).then(() => {
-      const gridHost = $("#smuCalGridHost");
       const loading = $("#smuCalLoading");
       if (loading) loading.remove();
-      if (gridHost) {
-        gridHost.innerHTML = renderSmuCalendarGrid(pattern, monthVal);
-        bindSmuCalendarClicks(pattern);
-      }
+      refreshSmuCalendarGridHost(pattern);
     }).catch(err => {
       const loading = $("#smuCalLoading");
       if (loading) loading.textContent = err.message || "Ошибка загрузки";
@@ -4006,6 +4224,12 @@
       closeSmuCellPicker();
       renderSmuCalendarSection(pattern);
     };
+    $("#smuDetailSmuFill22Btn")?.addEventListener("click", () => {
+      fillSmuPatternMonth22(pattern, $("#smuDetailSmuAnchor")?.value, state.smuCalendarMonth).catch(err => showToast(err.message || "Ошибка", "error"));
+    });
+    $("#smuDetailSmuClearMonthBtn")?.addEventListener("click", () => {
+      clearSmuPatternMonth(pattern, state.smuCalendarMonth).catch(err => showToast(err.message || "Ошибка", "error"));
+    });
   }
 
   async function deleteSelectedSmu() {
@@ -4089,27 +4313,15 @@
         <button type="button" class="btn" id="toggleSmuFormBtn">${I("plus")}${state.smuFormOpen ? "Скрыть форму" : "Новая СМУ"}</button>
       </div>
       <div id="smuCreateForm" class="smu-create-form" style="display:${state.smuFormOpen ? "block" : "none"}">
-        <h4 style="margin:0 0 10px">Новая СМУ · 4 смены</h4>
-        <div class="smu-preset-row smu-preset-row--create">
-          <span class="smu-preset-label">Шаблон:</span>
-          <button type="button" class="smu-preset-chip smu-preset-chip--day" data-new-smu-preset="2-2">
-            <span class="smu-preset-chip-title">2/2</span>
-            <span class="smu-preset-chip-sub">4 смены день/ночь</span>
-          </button>
-          <button type="button" class="smu-preset-chip smu-preset-chip--night" data-new-smu-preset="3-3">
-            <span class="smu-preset-chip-title">3/3</span>
-            <span class="smu-preset-chip-sub">альтернатива</span>
-          </button>
-        </div>
-        <div class="inline-form-grid">
+        <h4 style="margin:0 0 8px">Новая СМУ · 4 смены</h4>
+        <p class="smu-create-intro">Заполните код и название, при необходимости нажмите «2/2» для разметки месяца, отредактируйте вручную и создайте СМУ.</p>
+        <div class="inline-form-grid smu-create-grid">
           <div><label class="ui-label">Код *</label><input type="text" id="newSmuCode" class="cell-input" placeholder="smu-a-22" style="width:100%;max-width:none"></div>
-          <div><label class="ui-label">Название *</label><input type="text" id="newSmuName" class="cell-input" placeholder="СМУ A (2/2)" style="width:100%;max-width:none"></div>
-          <div><label class="ui-label">Раб. дней</label><input type="number" id="newSmuWork" class="cell-input" min="1" value="2" style="width:100%;max-width:none"></div>
-          <div><label class="ui-label">Выходных</label><input type="number" id="newSmuOff" class="cell-input" min="0" value="2" style="width:100%;max-width:none"></div>
-          <div><label class="ui-label">Якорь цикла</label><input type="date" id="newSmuAnchor" class="cell-input" style="width:100%;max-width:none"></div>
-          <div style="display:flex;align-items:flex-end"><button type="button" class="btn" id="createSmuBtn">${I("check")} Создать</button></div>
+          <div><label class="ui-label">Название *</label><input type="text" id="newSmuName" class="cell-input" placeholder="СМУ A" style="width:100%;max-width:none"></div>
+          <div style="display:flex;align-items:flex-end"><button type="button" class="btn" id="createSmuBtn">${I("check")} Создать СМУ</button></div>
         </div>
-        <div id="smuCreatePreview" class="smu-create-preview"></div>
+        <p class="smu-create-hint">Клик по дню → смена (день/ночь) → статус. Шаблон 2/2 можно править перед созданием.</p>
+        <div id="smuCreateCalHost"></div>
       </div>
       <div class="smu-layout">
         <div class="smu-sidebar-wrap">
@@ -4123,8 +4335,10 @@
       </div>
     </div>`;
       const today = localDateStr(new Date());
-      $("#newSmuAnchor").value = today;
-      bindSmuCreatePreview();
+      if (state.smuFormOpen) {
+        if (!state.smuCreateMonth) state.smuCreateMonth = today.slice(0, 7);
+        bindSmuCreateForm();
+      }
       const smuStatusOpts = [{ value: "", label: "Все" }, { value: "active", label: "Активные" }, { value: "inactive", label: "Неактивные" }];
       filterCmps.smuStatus?.destroy?.();
       filterCmps.smuStatus = UI.createSelect($("#filterSmuStatus"), {
@@ -4132,28 +4346,39 @@
         onChange: v => { state.filters.smu.status = v; pickDefaultSmu(); renderSmuSidebarList(); renderSmuDetail(); },
       });
       $("#searchSmu").oninput = () => onSmuPatternSearch();
-      $("#toggleSmuFormBtn").onclick = () => { state.smuFormOpen = !state.smuFormOpen; renderSmu(true); };
+      $("#toggleSmuFormBtn").onclick = () => {
+        state.smuFormOpen = !state.smuFormOpen;
+        if (state.smuFormOpen) {
+          state.smuDraftOverrides = {};
+          state.smuCreateMonth = localDateStr(new Date()).slice(0, 7);
+        }
+        renderSmu(true);
+      };
       $("#createSmuBtn").onclick = async () => {
         try {
-          const anchor = $("#newSmuAnchor").value || today;
-          const work = parseInt($("#newSmuWork").value, 10) || 2;
-          const off = parseInt($("#newSmuOff").value, 10) || 2;
+          const code = $("#newSmuCode").value.trim();
+          const name = $("#newSmuName").value.trim();
+          if (!code || !name) return showToast("Укажите код и название СМУ", "warning");
           const created = await HrApi.createSmuPattern({
-            code: $("#newSmuCode").value.trim(),
-            name: $("#newSmuName").value.trim(),
-            work_days: work,
-            off_days: off,
-            anchor_date: anchor,
+            code,
+            name,
+            work_days: 0,
+            off_days: 0,
+            anchor_date: today,
           });
-          const preset = work === 2 && off === 2 ? "2-2" : (work === 3 && off === 3 ? "3-3" : null);
-          if (preset && created.id) {
-            await HrApi.applySmuPatternPreset(created.id, preset, anchor, true);
+          const draftEntries = Object.entries(state.smuDraftOverrides || {});
+          for (const [key, stateVal] of draftEntries) {
+            const [dateStr, shiftRaw] = key.split(":");
+            await HrApi.setSmuPatternOverride(created.id, dateStr, parseInt(shiftRaw, 10), stateVal);
           }
           await reloadData();
+          state.smuDraftOverrides = {};
           state.selectedSmuId = created.id || null;
           state._smuDetailPatternId = null;
-          state.smuCalendarMonth = anchor.slice(0, 7);
-          showToast("СМУ создана" + (preset ? " · график 2/2 применён" : ""), "success");
+          state.smuCalendarMonth = state.smuCreateMonth || today.slice(0, 7);
+          state.smuOverridesLoadedKey = null;
+          state.smuFormOpen = false;
+          showToast(`СМУ создана · отмечено дней: ${draftEntries.length}`, "success");
           renderSmu(true);
         } catch (err) { showToast(err.message || "Ошибка", "error"); }
       };
@@ -4190,6 +4415,103 @@
     await FormationUi.renderTrackFormationSettings(trackId, "formationSettingsInner", I, showToast);
   }
 
+  function formationTimeSelectOpts() {
+    const choices = FormationUi.formationTimeChoices?.() || ["12:00", "13:00", "14:00", "15:00"];
+    return [
+      ...choices.map(t => ({ value: t, label: t })),
+      { value: "custom", label: "Своё время" },
+    ];
+  }
+
+  function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ""));
+  }
+
+  function resolveFormationManualSlotId(time) {
+    const raw = FormationUi.resolveSlotIdForTime?.(time);
+    return isUuid(raw) ? raw : null;
+  }
+
+  function syncFormationManualTimeField() {
+    const mode = formationCmps.time?.getValue?.() || "12:00";
+    const customWrap = $("#formTimeWrap");
+    if (customWrap) customWrap.hidden = mode !== "custom";
+    if (mode !== "custom" && $("#formTime")) $("#formTime").value = mode;
+  }
+
+  function syncFormationManualMemberFields() {
+    const mode = formationCmps.memberMode?.getValue?.() || "auto";
+    const pickHost = $("#formMembersHost");
+    const maxWrap = $("#formMaxMembersWrap");
+    if (maxWrap) maxWrap.hidden = mode !== "auto";
+    if (pickHost) pickHost.hidden = mode !== "pick";
+    if (mode === "pick") refreshFormationMemberPicker();
+  }
+
+  async function refreshFormationMemberPicker() {
+    const host = $("#formMembersHost");
+    if (!host || formationCmps.memberMode?.getValue?.() !== "pick") return;
+    const trackId = formationCmps.track?.getValue?.();
+    if (!trackId) {
+      host.innerHTML = '<div class="empty">Сначала выберите трек</div>';
+      return;
+    }
+    host.innerHTML = '<div class="empty">Загрузка…</div>';
+    try {
+      const items = await HrApi.loadTrackAssignments(trackId);
+      const active = items.filter(row => String(row.status || "active") === "active");
+      if (!active.length) {
+        host.innerHTML = '<div class="empty">На треке нет активных учеников</div>';
+        return;
+      }
+      host.innerHTML = active.map(row => {
+        const u = D.userById(row.user_id);
+        const name = u ? D.fullName(u) : `${row.last_name || ""} ${row.first_name || ""}`.trim();
+        const maxLabel = u?.id_max ? `MAX ${u.id_max}` : "нет MAX";
+        return `<label><input type="checkbox" class="form-member-cb" value="${row.user_id}"> ${escapeHtml(name)} · ${escapeHtml(maxLabel)}</label>`;
+      }).join("");
+    } catch (err) {
+      host.innerHTML = `<div class="empty">${escapeHtml(err.message || "Ошибка загрузки")}</div>`;
+    }
+  }
+
+  function selectedFormationMemberIds() {
+    return [...document.querySelectorAll(".form-member-cb:checked")].map(el => el.value);
+  }
+
+  function applyReminderTestPreset(hours) {
+    const t = new Date();
+    t.setSeconds(0, 0);
+    t.setMinutes(t.getMinutes() + Math.round(hours * 60));
+    if ($("#formDate")) $("#formDate").value = localDateStr(t);
+    if ($("#formTime")) {
+      $("#formTime").value = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+    }
+    formationCmps.time?.setValue?.("custom");
+    syncFormationManualTimeField();
+    showToast(
+      `Время занятия: ${t.toLocaleString("ru-RU")}. Напоминание сработает, когда до начала ≈${hours === 3 ? "3 часа" : "24 часа"} (окно ±2 мин). Нажмите «Запустить напоминания».`,
+      "info",
+    );
+  }
+
+  async function runFormationReminderTest() {
+    try {
+      const res = await HrApi.runLessonReminders();
+      const r = res.result || {};
+      const s3 = r.lesson_reminder_3h || {};
+      const s1 = r.lesson_reminder_1d || {};
+      const sent = (s3.employees_sent || 0) + (s1.employees_sent || 0);
+      const lessons = (s3.lessons || 0) + (s1.lessons || 0);
+      showToast(
+        `Напоминания: занятий в окне ${lessons}, отправлено ученикам ${sent} (3ч: ${s3.employees_sent || 0}, 1д: ${s1.employees_sent || 0})`,
+        sent ? "success" : "warning",
+      );
+    } catch (err) {
+      showToast(err.message || "Ошибка запуска напоминаний", "error");
+    }
+  }
+
   function bindFormationManualForm() {
     const presetTrack = state.formationPresetTrack;
     const trackOptions = trackOpts();
@@ -4200,16 +4522,26 @@
       label: "Трек *",
       options: trackOptions,
       value: defaultTrack,
-      onChange: () => refreshFormationTeacherSelect(),
-    });
-    formationCmps.slot = UI.createSelect($("#formSlotWrap"), {
-      label: "Время занятия",
-      options: [{ value: "", label: "Вручную" }, ...slotOpts()],
-      value: slotOpts()[0]?.value || "",
       onChange: () => {
-        const t = formationSlotTime(formationCmps.slot?.getValue?.());
-        if (t && $("#formTime")) $("#formTime").value = t;
+        refreshFormationTeacherSelect();
+        refreshFormationMemberPicker();
       },
+    });
+    formationCmps.time = UI.createSelect($("#formTimeSelectWrap"), {
+      label: "Время *",
+      options: formationTimeSelectOpts(),
+      value: formationTimeSelectOpts()[0]?.value || "12:00",
+      onChange: () => syncFormationManualTimeField(),
+    });
+    formationCmps.memberMode = UI.createSelect($("#formMemberModeWrap"), {
+      label: "Состав группы",
+      options: [
+        { value: "auto", label: "Автоформирование (алгоритм)" },
+        { value: "track", label: "Все ученики на треке" },
+        { value: "pick", label: "Выбрать учеников" },
+      ],
+      value: "pick",
+      onChange: () => syncFormationManualMemberFields(),
     });
     formationCmps.teacher = UI.createSearchSelect($("#formTeacherWrap"), {
       label: "Инструктор (если не на треке)",
@@ -4222,26 +4554,28 @@
       options: [{ value: "practice", label: "Практика" }, { value: "lecture", label: "Лекция" }],
       value: "practice",
     });
-    const slotId = formationCmps.slot?.getValue?.();
-    const slotTime = slotId ? formationSlotTime(slotId) : null;
-    if (slotTime && $("#formTime")) $("#formTime").value = slotTime;
+    syncFormationManualTimeField();
+    syncFormationManualMemberFields();
+    $("#formPreset3h")?.addEventListener("click", () => applyReminderTestPreset(3));
+    $("#formPreset24h")?.addEventListener("click", () => applyReminderTestPreset(24));
+    $("#formRunRemindersBtn")?.addEventListener("click", () => runFormationReminderTest());
     $("#formCreateBtn").onclick = submitFormationManual;
   }
 
   async function submitFormationManual() {
     const trackId = formationCmps.track?.getValue?.();
-    const slotId = formationCmps.slot?.getValue?.() || null;
     const teacherId = formationCmps.teacher?.getValue?.() || null;
     const lessonType = formationCmps.type?.getValue?.() || "practice";
+    const memberMode = formationCmps.memberMode?.getValue?.() || "auto";
     const date = $("#formDate")?.value;
-    let time = $("#formTime")?.value;
-    if (slotId) {
-      const slotTime = formationSlotTime(slotId);
-      if (slotTime) time = slotTime;
-    }
+    const time = formationCmps.time?.getValue?.() === "custom"
+      ? $("#formTime")?.value
+      : (formationCmps.time?.getValue?.() || $("#formTime")?.value);
     const maxMembers = parseInt($("#formMaxMembers")?.value, 10) || 12;
     const place = ($("#formPlace")?.value || "").trim() || null;
+    const title = ($("#formTitle")?.value || "").trim() || null;
     if (!trackId || !date || !time) return showToast("Заполните трек, дату и время", "warning");
+    const slotId = resolveFormationManualSlotId(time);
     try {
       const payload = {
         track_id: trackId,
@@ -4250,9 +4584,16 @@
         starts_at: localDateTimeIso(date, time),
         lesson_type: lessonType,
         place,
-        auto_form: true,
-        max_members: maxMembers,
+        title,
       };
+      if (memberMode === "auto") {
+        payload.auto_form = true;
+        payload.max_members = maxMembers;
+      } else if (memberMode === "pick") {
+        const memberIds = selectedFormationMemberIds();
+        if (!memberIds.length) return showToast("Выберите хотя бы одного ученика", "warning");
+        payload.member_ids = memberIds;
+      }
       await HrApi.createLesson(payload);
       await reloadData();
       showToast("Занятие создано", "success");
@@ -4319,17 +4660,30 @@
       </div>
       <div id="formationViewManual"${view !== "manual" ? " hidden" : ""}>
         <div class="formation-manual-panel">
-          <div class="inline-form-grid">
+          <p class="formation-manual-hint">Создайте разовое занятие с произвольной датой, временем и составом группы — удобно для проверки напоминаний в MAX и расписания в боте.</p>
+          <div class="formation-test-presets">
+            <span class="ui-label">Тест напоминаний:</span>
+            <button type="button" class="btn small secondary" id="formPreset3h">Сейчас +3 ч</button>
+            <button type="button" class="btn small secondary" id="formPreset24h">Сейчас +24 ч</button>
+            <button type="button" class="btn small" id="formRunRemindersBtn">${I("refresh")} Запустить напоминания</button>
+          </div>
+          <div class="inline-form-grid formation-manual-grid">
             <div id="formTrackWrap"></div>
-            <div id="formSlotWrap"></div>
+            <div id="formMemberModeWrap"></div>
             <div id="formTypeWrap"></div>
             <div><label>Дата *</label><input type="date" id="formDate" value="${localDateStr(new Date())}"></div>
-            <div><label>Время</label><input type="time" id="formTime" value="10:00"></div>
-            <div><label>Макс. в группе</label><input type="number" id="formMaxMembers" min="1" max="50" value="12"></div>
+            <div id="formTimeSelectWrap"></div>
+            <div id="formTimeWrap"><label>Своё время *</label><input type="time" id="formTime" value="10:00"></div>
+            <div id="formMaxMembersWrap"><label>Макс. в группе</label><input type="number" id="formMaxMembers" min="1" max="50" value="12"></div>
             <div><label>Место</label><input type="text" id="formPlace" placeholder="Площадка А"></div>
+            <div><label>Название</label><input type="text" id="formTitle" placeholder="Необязательно"></div>
             <div id="formTeacherWrap"></div>
           </div>
-          <div style="margin-top:12px"><button type="button" class="btn" id="formCreateBtn">${I("users")} Создать занятие</button></div>
+          <div id="formMembersHost" class="formation-member-pick" hidden></div>
+          <div class="formation-manual-actions">
+            <button type="button" class="btn" id="formCreateBtn">${I("users")} Создать занятие</button>
+          </div>
+          <p class="formation-manual-note">Напоминания в MAX: за ~3 часа и за ~24 часа до начала (окно ±2 мин). У ученика должен быть MAX ID. Повторная отправка блокируется — удалите запись в «Контроль → Уведомления» или занятие и создайте заново.</p>
         </div>
       </div></div>`;
 
@@ -4666,6 +5020,7 @@
             ${l.place ? `<span class="schedule-lesson-meta">${escapeHtml(l.place)}</span>` : ""}
           </div>
           <span class="tag ${tagClass}">${TYPE_LABELS[type] || type}</span>
+          <button type="button" class="btn small danger secondary schedule-lesson-delete" data-delete-lesson="${l.id}" title="Удалить занятие" aria-label="Удалить">${I("trash")}</button>
         </article>`;
       }).join("");
       return `<section class="schedule-day-group${ds === todayStr ? " is-today" : ""}">
@@ -4674,6 +5029,13 @@
       </section>`;
     }).filter(Boolean).join("");
     host.innerHTML = html || '<div class="empty schedule-empty">В выбранном периоде нет занятий</div>';
+    host.querySelectorAll("[data-delete-lesson]").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const lesson = lessons.find(item => String(item.id) === String(btn.dataset.deleteLesson));
+        if (lesson) deleteHrLesson(lesson);
+      };
+    });
   }
 
   function renderHrCalendarBody(rangeLessons) {
@@ -4702,9 +5064,10 @@
       const hourLines = hours.map(h => `<div class="cal-hour-line" style="top:${h.top}px"></div>`).join("");
       const blocksHtml = blocks.map(b => {
         const l = b.lesson;
-        return `<div class="cal-lesson-block mine hr-readonly"` +
+        return `<div class="cal-lesson-block mine hr-lesson-block hr-readonly"` +
           ` style="top:${b.top}px;height:${b.height}px;left:calc(${b.leftPct}% + 2px);width:calc(${b.widthPct}% - 4px)"` +
           ` title="${escapeHtml([l.title, l.track_name, l.teacher_name, l.place].filter(Boolean).join(" · "))}">` +
+          `<button type="button" class="cal-lesson-delete" data-delete-lesson="${l.id}" title="Удалить">×</button>` +
           `<strong>${escapeHtml(l.title)}</strong>` +
           `<span class="cal-block-meta">${l.time}${l.timeEnd ? "–" + l.timeEnd : ""}</span>` +
           `<span class="cal-block-meta">${escapeHtml(l.track_name || "—")}</span>` +
@@ -4724,6 +5087,13 @@
           ${emptyMsg ? `<div class="cal-empty-overlay">${emptyMsg}</div>` : ""}
         </div>
       </div>`;
+    wrap.querySelectorAll("[data-delete-lesson]").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const lesson = rangeLessons.find(item => String(item.id) === String(btn.dataset.deleteLesson));
+        if (lesson) deleteHrLesson(lesson);
+      };
+    });
   }
 
   function renderHrSchedule() {
