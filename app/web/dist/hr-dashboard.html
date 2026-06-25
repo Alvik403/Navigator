@@ -1463,11 +1463,16 @@
     const draft = state.instructorTrackDraft[teacherId];
     const on = draft?.trackIds.includes(track.id);
     const practice = track.practice_required != null ? `${track.practice_required} практик` : "";
-    const link = trackTeacherLinks().find(l => l.track_id === track.id);
+    const onTrack = trackTeacherLinks().filter(l => l.track_id === track.id);
     if (on) return practice || "назначен";
-    if (!link) return practice ? `${practice} · свободен` : "свободен";
-    const name = [link.teacher_last_name, link.teacher_first_name].filter(Boolean).join(" ");
-    return practice ? `${practice} · инстр.: ${name || "—"}` : `инстр.: ${name || "—"}`;
+    if (!onTrack.length) return practice ? `${practice} · свободен` : "свободен";
+    const names = onTrack
+      .map(l => [l.teacher_last_name, l.teacher_first_name].filter(Boolean).join(" "))
+      .filter(Boolean);
+    const instLabel = names.length > 1
+      ? `${names.length} инстр.`
+      : `инстр.: ${names[0] || "—"}`;
+    return practice ? `${practice} · ${instLabel}` : instLabel;
   }
 
   function renderInstructorTrackLists(teacherId) {
@@ -1513,7 +1518,7 @@
             if (link) {
               const otherName = [link.teacher_last_name, link.teacher_first_name].filter(Boolean).join(" ");
               const track = allTracks.find(t => t.id === id);
-              if (!window.confirm(`Трек «${track?.name || id}» сейчас у ${otherName || "другого инструктора"}. Переназначить?`)) {
+              if (!window.confirm(`Трек «${track?.name || id}» уже ведёт ${otherName || "другой инструктор"}. Добавить и этого инструктора на трек?`)) {
                 cb.checked = false;
                 return;
               }
@@ -3263,7 +3268,7 @@
     try {
       await HrApi.deleteLesson(lesson.id);
       await reloadData();
-      showToast("Занятие удалено, уведомления отправлены", "success");
+      showToast("Занятие удалено", "success");
       renderHrSchedule();
     } catch (err) {
       showToast(err.message || "Не удалось удалить", "error");
@@ -3298,7 +3303,7 @@
       ],
       value: lesson.lesson_type || "practice",
     });
-    $("#elDate").value = lesson.date || (lesson.startsAt ? dateStr(new Date(lesson.startsAt)) : localDateStr(new Date()));
+    $("#elDate").value = lesson.startsAt ? localDateStr(new Date(lesson.startsAt)) : localDateStr(new Date());
     $("#elTime").value = timeInputFromIso(lesson.startsAt) || lesson.time || "10:00";
     $("#elTimeEnd").value = timeInputFromIso(lesson.endsAt) || lesson.timeEnd || "";
     $("#elPlace").value = lesson.place || "";
@@ -3335,7 +3340,7 @@
       await HrApi.updateLesson(lesson.id, payload);
       await reloadData();
       closeEditLessonModal();
-      showToast("Занятие обновлено, уведомления отправлены", "success");
+      showToast("Занятие обновлено", "success");
       renderHrSchedule();
     } catch (err) {
       showToast(err.message || "Не удалось сохранить", "error");

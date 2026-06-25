@@ -2027,19 +2027,19 @@ async def preview_formation_members(
     candidates.sort(key=lambda item: (item["urgency"], -item["weight"], item["name"]))
     selected = candidates[:effective_max]
     reserve = candidates[effective_max:]
-    teacher_id = await resolve_track_instructor(track_id)
-    teacher_name = None
-    if teacher_id:
-        profile = await get_user_profile(teacher_id)
-        if profile:
-            teacher_name = f"{profile.get('last_name', '')} {profile.get('first_name', '')}".strip()
+    instructor_ids = await list_track_instructors(track_id)
+    instructor_names = await list_track_instructor_names(track_id)
+    teacher_id = instructor_ids[0] if instructor_ids else None
+    teacher_name = ", ".join(instructor_names) if instructor_names else None
     return {
         "track_id": track_id,
         "track_name": track_name,
         "lesson_date": lesson_date.isoformat(),
         "lesson_type": lesson_type,
         "teacher_id": teacher_id,
+        "teacher_ids": instructor_ids,
         "teacher_name": teacher_name,
+        "instructor_count": len(instructor_ids),
         "selected": selected,
         "reserve": reserve,
         "excluded": excluded,
@@ -2096,10 +2096,103 @@ async def lesson_exists_for_slot(*, track_id: str, slot_id: str, lesson_date: da
     return bool(found)
 
 
-async def lesson_exists_for_track_on_date(*, track_id: str, lesson_date: date) -> bool:
+async def _lesson_day_bounds(lesson_date: date) -> tuple[datetime, datetime]:
     tz = ZoneInfo("Europe/Moscow")
     day_start = datetime.combine(lesson_date, time.min, tzinfo=tz).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
     day_end = day_start + timedelta(days=1)
+    return day_start, day_end
+
+
+async def list_track_instructors(track_id: str) -> list[str]:
+    async with get_pool().acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT tt.teacher_id
+            FROM app.track_teachers tt
+            JOIN app.profiles p ON p.user_id = tt.teacher_id
+            JOIN app.roles r ON r.id = p.role_id
+            WHERE tt.track_id = $1::uuid
+              AND p.status = 'active'
+              AND r.code = 'teacher'
+            ORDER BY tt.created_at, tt.teacher_id
+            """,
+            uuid.UUID(track_id),
+        )
+    return [str(row["teacher_id"]) for row in rows]
+
+
+async def list_track_instructor_names(track_id: str) -> list[str]:
+    names: list[str] = []
+    for teacher_id in await list_track_instructors(track_id):
+        profile = await get_user_profile(teacher_id)
+        if not profile:
+            continue
+        name = f"{profile.get('last_name', '')} {profile.get('first_name', '')}".strip()
+        if name:
+            names.append(name)
+    return names
+
+
+async def get_scheduled_member_ids_on_track_date(*, track_id: str, lesson_date: date) -> set[str]:
+    day_start, day_end = await _lesson_day_bounds(lesson_date)
+    async with get_pool().acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT lm.user_id
+            FROM app.lesson_members lm
+            JOIN app.lessons l ON l.id = lm.lesson_id
+            JOIN app.profiles p ON p.user_id = lm.user_id
+            JOIN app.roles r ON r.id = p.role_id
+            WHERE l.track_id = $1::uuid
+              AND l.starts_at >= $2
+              AND l.starts_at < $3
+              AND r.code = 'employee'
+            """,
+            uuid.UUID(track_id),
+            day_start,
+            day_end,
+        )
+    return {str(row["user_id"]) for row in rows}
+
+
+async def get_busy_teacher_ids_on_track_slot(
+    *,
+    track_id: str,
+    slot_id: str,
+    lesson_date: date,
+) -> set[str]:
+    slot_row = None
+    async with get_pool().acquire() as conn:
+        slot_row = await conn.fetchrow(
+            "SELECT id, starts_at_local, duration_min FROM app.conveyor_slots WHERE id = $1::uuid",
+            uuid.UUID(slot_id),
+        )
+    if not slot_row:
+        return set()
+    slot = serialize_record(slot_row)
+    starts_at = slot_starts_at(lesson_date, slot)
+    ends_at = starts_at + timedelta(minutes=int(slot.get("duration_min") or 60))
+    async with get_pool().acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT l.teacher_id
+            FROM app.lessons l
+            WHERE l.track_id = $1::uuid
+              AND l.slot_id = $2::uuid
+              AND l.starts_at >= $3
+              AND l.starts_at < $4
+              AND l.teacher_id IS NOT NULL
+            """,
+            uuid.UUID(track_id),
+            uuid.UUID(slot_id),
+            starts_at,
+            ends_at,
+        )
+    return {str(row["teacher_id"]) for row in rows}
+
+
+async def lesson_exists_for_track_on_date(*, track_id: str, lesson_date: date) -> bool:
+    day_start, day_end = await _lesson_day_bounds(lesson_date)
     async with get_pool().acquire() as conn:
         found = await conn.fetchval(
             """
@@ -2116,23 +2209,54 @@ async def lesson_exists_for_track_on_date(*, track_id: str, lesson_date: date) -
     return bool(found)
 
 
-async def resolve_track_instructor(track_id: str) -> str | None:
+async def resolve_track_instructor(
+    track_id: str,
+    *,
+    lesson_date: date | None = None,
+    slot_id: str | None = None,
+    exclude_teacher_ids: set[str] | None = None,
+) -> str | None:
+    instructors = await list_track_instructors(track_id)
+    if not instructors:
+        return None
+
+    excluded = exclude_teacher_ids or set()
+    candidates = [teacher_id for teacher_id in instructors if teacher_id not in excluded]
+    if not candidates:
+        return None
+
+    if lesson_date and slot_id:
+        busy = await get_busy_teacher_ids_on_track_slot(
+            track_id=track_id,
+            slot_id=slot_id,
+            lesson_date=lesson_date,
+        )
+        candidates = [teacher_id for teacher_id in candidates if teacher_id not in busy]
+        if not candidates:
+            return None
+
+    if not lesson_date:
+        return candidates[0]
+
+    day_start, day_end = await _lesson_day_bounds(lesson_date)
     async with get_pool().acquire() as conn:
-        teacher_id = await conn.fetchval(
+        rows = await conn.fetch(
             """
-            SELECT tt.teacher_id
-            FROM app.track_teachers tt
-            JOIN app.profiles p ON p.user_id = tt.teacher_id
-            JOIN app.roles r ON r.id = p.role_id
-            WHERE tt.track_id = $1::uuid
-              AND p.status = 'active'
-              AND r.code = 'teacher'
-            ORDER BY tt.created_at, tt.teacher_id
-            LIMIT 1
+            SELECT l.teacher_id, COUNT(*)::int AS lesson_count
+            FROM app.lessons l
+            WHERE l.track_id = $1::uuid
+              AND l.teacher_id = ANY($2::uuid[])
+              AND l.starts_at >= $3
+              AND l.starts_at < $4
+            GROUP BY l.teacher_id
             """,
             uuid.UUID(track_id),
+            [uuid.UUID(teacher_id) for teacher_id in candidates],
+            day_start,
+            day_end,
         )
-    return str(teacher_id) if teacher_id else None
+    counts = {str(row["teacher_id"]): int(row["lesson_count"]) for row in rows}
+    return min(candidates, key=lambda teacher_id: (counts.get(teacher_id, 0), teacher_id))
 
 
 async def _log_auto_formation(
@@ -2186,8 +2310,23 @@ async def _formation_plan_item_status(
     slot_id = str(slot["id"])
     settings = formation_settings_from_track(track)
     lt = lesson_type or settings["lesson_type"]
-    teacher_id = await resolve_track_instructor(track_id)
-    exists_today = await lesson_exists_for_track_on_date(track_id=track_id, lesson_date=lesson_day)
+    instructor_ids = await list_track_instructors(track_id)
+    instructor_names = await list_track_instructor_names(track_id)
+    scheduled_members = await get_scheduled_member_ids_on_track_date(
+        track_id=track_id,
+        lesson_date=lesson_day,
+    )
+    busy_teachers = await get_busy_teacher_ids_on_track_slot(
+        track_id=track_id,
+        slot_id=slot_id,
+        lesson_date=lesson_day,
+    )
+    free_instructors = [teacher_id for teacher_id in instructor_ids if teacher_id not in busy_teachers]
+    teacher_id = await resolve_track_instructor(
+        track_id,
+        lesson_date=lesson_day,
+        slot_id=slot_id,
+    )
 
     item: dict[str, Any] = {
         "track_id": track_id,
@@ -2198,7 +2337,11 @@ async def _formation_plan_item_status(
         "lesson_date": lesson_day.isoformat(),
         "lesson_type": lt,
         "teacher_id": teacher_id,
-        "teacher_name": None,
+        "teacher_ids": instructor_ids,
+        "teacher_name": ", ".join(instructor_names) if instructor_names else None,
+        "instructor_count": len(instructor_ids),
+        "free_instructor_count": len(free_instructors),
+        "scheduled_member_count": len(scheduled_members),
         "status": "ready",
         "reason": None,
         "selected_count": 0,
@@ -2209,22 +2352,18 @@ async def _formation_plan_item_status(
         "auto_enabled": settings["auto_enabled"],
         "default_place": settings["default_place"],
     }
-    if teacher_id:
-        profile = await get_user_profile(teacher_id)
-        if profile:
-            item["teacher_name"] = f"{profile.get('last_name', '')} {profile.get('first_name', '')}".strip()
 
     if not settings["auto_enabled"] and not include_disabled:
         item["status"] = "disabled"
         item["reason"] = "auto_disabled"
         return item
-    if exists_today:
-        item["status"] = "scheduled"
-        item["reason"] = "already_scheduled_today"
-        return item
-    if not teacher_id:
+    if not instructor_ids:
         item["status"] = "blocked"
         item["reason"] = "no_instructor"
+        return item
+    if not free_instructors:
+        item["status"] = "scheduled"
+        item["reason"] = "all_instructors_busy" if scheduled_members else "already_scheduled_today"
         return item
 
     preview = await preview_formation_members(
@@ -2232,18 +2371,19 @@ async def _formation_plan_item_status(
         lesson_date=lesson_day,
         lesson_type=lt,
         max_members=settings["max_members"],
+        exclude_user_ids=scheduled_members,
     )
     item["selected"] = preview["selected"]
     item["reserve"] = preview.get("reserve") or []
     item["excluded"] = preview["excluded"]
     item["selected_count"] = len(preview["selected"])
     item["reserve_count"] = len(item["reserve"])
-    item["teacher_id"] = preview.get("teacher_id") or teacher_id
+    item["teacher_id"] = teacher_id or preview.get("teacher_id")
     item["teacher_name"] = preview.get("teacher_name") or item["teacher_name"]
 
     if item["selected_count"] == 0:
-        item["status"] = "blocked"
-        item["reason"] = "no_members"
+        item["status"] = "scheduled" if scheduled_members else "blocked"
+        item["reason"] = "groups_formed" if scheduled_members else "no_members"
     elif item["selected_count"] < settings["min_members"]:
         item["status"] = "blocked"
         item["reason"] = "below_min_members"
@@ -2381,78 +2521,116 @@ async def create_formation_plan_lessons(
         if not slot:
             skipped.append({"track_id": track_id, "slot_id": slot_id, "reason": "slot_not_found"})
             continue
-        if await lesson_exists_for_track_on_date(track_id=track_id, lesson_date=target_date):
+
+        used_teachers: set[str] = set()
+        groups_created = 0
+        while True:
+            teacher_id = await resolve_track_instructor(
+                track_id,
+                lesson_date=target_date,
+                slot_id=slot_id,
+                exclude_teacher_ids=used_teachers,
+            )
+            if not teacher_id:
+                break
+
+            scheduled_today = await get_scheduled_member_ids_on_track_date(
+                track_id=track_id,
+                lesson_date=target_date,
+            )
+            member_ids = await select_formation_members(
+                track_id=track_id,
+                lesson_date=target_date,
+                lesson_type=entry["lesson_type"],
+                max_members=entry["max_members"],
+                exclude_user_ids=reserved | scheduled_today,
+            )
+            if len(member_ids) < entry["min_members"]:
+                break
+
+            starts_at = slot_starts_at(target_date, slot)
+            duration = int(slot.get("duration_min") or 60)
+            ends_at = starts_at + timedelta(minutes=duration)
+            track = await get_track(track_id)
+            place = (track or {}).get("formation_default_place")
+            lesson = await create_lesson(
+                track_id=track_id,
+                slot_id=slot_id,
+                teacher_id=str(teacher_id),
+                starts_at=starts_at,
+                ends_at=ends_at,
+                place=place,
+                lesson_type=entry["lesson_type"],
+                member_ids=member_ids,
+                title=f"{entry.get('track_name')} · {slot.get('name')}",
+            )
+            payload = {
+                "lesson_id": lesson.get("id"),
+                "track_id": track_id,
+                "track_name": entry.get("track_name"),
+                "slot_id": slot_id,
+                "slot_name": slot.get("name"),
+                "lesson_date": target_date.isoformat(),
+                "starts_at": lesson.get("starts_at"),
+                "members": len(member_ids),
+                "teacher_id": teacher_id,
+                "group_number": groups_created + 1,
+            }
+            created.append(payload)
+            reserved.update(member_ids)
+            used_teachers.add(str(teacher_id))
+            groups_created += 1
+            await _log_auto_formation(
+                track_id=track_id,
+                slot_id=slot_id,
+                lesson_date=target_date,
+                status="created",
+                lesson_id=str(lesson.get("id")),
+                detail=f"members={len(member_ids)} teacher={teacher_id}",
+            )
+
+        if groups_created == 0:
+            scheduled_today = await get_scheduled_member_ids_on_track_date(
+                track_id=track_id,
+                lesson_date=target_date,
+            )
+            busy_teachers = await get_busy_teacher_ids_on_track_slot(
+                track_id=track_id,
+                slot_id=slot_id,
+                lesson_date=target_date,
+            )
+            instructors = await list_track_instructors(track_id)
+            free_instructors = [tid for tid in instructors if tid not in busy_teachers]
+            if not instructors:
+                reason = "no_instructor"
+            elif not free_instructors:
+                reason = "all_instructors_busy" if scheduled_today else "already_scheduled_today"
+            elif scheduled_today:
+                reason = "groups_formed"
+            else:
+                preview = await preview_formation_members(
+                    track_id=track_id,
+                    lesson_date=target_date,
+                    lesson_type=entry["lesson_type"],
+                    max_members=entry["max_members"],
+                )
+                reason = "below_min_members" if preview["selected"] else "no_members"
             skipped.append({
                 "track_id": track_id,
                 "track_name": entry.get("track_name"),
                 "slot_id": slot_id,
                 "slot_name": entry.get("slot_name"),
-                "reason": "already_scheduled_today",
-            })
-            continue
-        teacher_id = entry.get("teacher_id")
-        if not teacher_id:
-            skipped.append({"track_id": track_id, "slot_id": slot_id, "reason": "no_instructor"})
-            continue
-        member_ids = await select_formation_members(
-            track_id=track_id,
-            lesson_date=target_date,
-            lesson_type=entry["lesson_type"],
-            max_members=entry["max_members"],
-            exclude_user_ids=reserved,
-        )
-        if not member_ids:
-            skipped.append({
-                "track_id": track_id,
-                "slot_id": slot_id,
                 "lesson_date": target_date.isoformat(),
-                "reason": "no_members",
+                "reason": reason,
             })
-            await _log_auto_formation(
-                track_id=track_id,
-                slot_id=slot_id,
-                lesson_date=target_date,
-                status="skipped",
-                detail="no_members",
-            )
-            continue
-        starts_at = slot_starts_at(target_date, slot)
-        duration = int(slot.get("duration_min") or 60)
-        ends_at = starts_at + timedelta(minutes=duration)
-        track = await get_track(track_id)
-        place = (track or {}).get("formation_default_place")
-        lesson = await create_lesson(
-            track_id=track_id,
-            slot_id=slot_id,
-            teacher_id=str(teacher_id),
-            starts_at=starts_at,
-            ends_at=ends_at,
-            place=place,
-            lesson_type=entry["lesson_type"],
-            member_ids=member_ids,
-            title=f"{entry.get('track_name')} · {slot.get('name')}",
-        )
-        payload = {
-            "lesson_id": lesson.get("id"),
-            "track_id": track_id,
-            "track_name": entry.get("track_name"),
-            "slot_id": slot_id,
-            "slot_name": slot.get("name"),
-            "lesson_date": target_date.isoformat(),
-            "starts_at": lesson.get("starts_at"),
-            "members": len(member_ids),
-            "teacher_id": teacher_id,
-        }
-        created.append(payload)
-        reserved.update(member_ids)
-        await _log_auto_formation(
-            track_id=track_id,
-            slot_id=slot_id,
-            lesson_date=target_date,
-            status="created",
-            lesson_id=str(lesson.get("id")),
-            detail=f"members={len(member_ids)}",
-        )
+            if reason in {"no_members", "below_min_members"}:
+                await _log_auto_formation(
+                    track_id=track_id,
+                    slot_id=slot_id,
+                    lesson_date=target_date,
+                    status="skipped",
+                    detail=reason,
+                )
     return {
         "target_date": target_date.isoformat(),
         "created": created,
@@ -2702,6 +2880,8 @@ async def update_lesson(
     lesson_type: str | None = None,
     title: str | None = None,
 ) -> dict[str, Any]:
+    from lesson_notifications import _normalize_dt
+
     async with get_pool().acquire() as conn:
         old_row = await conn.fetchrow(
             """
@@ -2713,6 +2893,24 @@ async def update_lesson(
         if not old_row:
             raise ValueError("Занятие не найдено")
         old_lesson = serialize_record(old_row)
+
+        new_start = _normalize_dt(starts_at) if starts_at is not None else _normalize_dt(old_lesson.get("starts_at"))
+        old_start = _normalize_dt(old_lesson.get("starts_at"))
+        old_end = _normalize_dt(old_lesson.get("ends_at"))
+        duration = (old_end - old_start) if old_start and old_end and old_end > old_start else timedelta(hours=1)
+
+        if ends_at is not None:
+            new_end = _normalize_dt(ends_at)
+        elif starts_at is not None and new_start:
+            new_end = new_start + duration
+        else:
+            new_end = old_end
+
+        if not new_start or not new_end:
+            raise ValueError("Некорректное время занятия")
+        if new_end <= new_start:
+            raise ValueError("Время окончания должно быть позже начала")
+
         if teacher_id is not None:
             await conn.execute(
                 "UPDATE app.lessons SET teacher_id = $2::uuid WHERE id = $1::uuid",
@@ -2723,26 +2921,13 @@ async def update_lesson(
             await conn.execute(
                 "UPDATE app.lessons SET starts_at = $2 WHERE id = $1::uuid",
                 uuid.UUID(lesson_id),
-                starts_at,
+                new_start,
             )
-            if ends_at is None:
-                from lesson_notifications import _normalize_dt
-
-                old_start = _normalize_dt(old_lesson.get("starts_at"))
-                old_end = _normalize_dt(old_lesson.get("ends_at"))
-                if old_start and old_end:
-                    duration = old_end - old_start
-                    new_end = _normalize_dt(starts_at) + duration
-                    await conn.execute(
-                        "UPDATE app.lessons SET ends_at = $2 WHERE id = $1::uuid",
-                        uuid.UUID(lesson_id),
-                        new_end,
-                    )
-        if ends_at is not None:
+        if starts_at is not None or ends_at is not None:
             await conn.execute(
                 "UPDATE app.lessons SET ends_at = $2 WHERE id = $1::uuid",
                 uuid.UUID(lesson_id),
-                ends_at,
+                new_end,
             )
         if place is not None:
             await conn.execute(

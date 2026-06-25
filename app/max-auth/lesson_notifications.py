@@ -132,6 +132,8 @@ def build_lesson_changed_text(
     new_starts_at: Any,
     old_place: Any,
     new_place: Any,
+    old_teacher_id: Any = None,
+    new_teacher_id: Any = None,
     old_teacher_name: str | None = None,
     new_teacher_name: str | None = None,
 ) -> str:
@@ -162,14 +164,12 @@ def build_lesson_changed_text(
         new_p = _place_norm(new_place) or "—"
         change_lines.extend(["", f"📍 Было: {old_p}", f"📍 Стало: {new_p}"])
 
-    old_teacher = (old_teacher_name or "").strip()
-    new_teacher = (new_teacher_name or teacher_display(lesson) or "").strip()
-    if old_teacher != new_teacher and (old_teacher or new_teacher):
-        change_lines.extend(["", f"👤 Было: {old_teacher or '—'}", f"👤 Стало: {new_teacher or '—'}"])
-    elif new_teacher and not change_lines:
-        change_lines.extend(["", f"👤 {new_teacher}"])
-    elif teacher_display(lesson) and not change_lines:
-        change_lines.extend(["", f"👤 {teacher_display(lesson)}"])
+    old_tid = str(old_teacher_id or "").strip()
+    new_tid = str(new_teacher_id or lesson.get("teacher_id") or "").strip()
+    if old_tid and new_tid and old_tid != new_tid:
+        old_teacher = (old_teacher_name or "—").strip() or "—"
+        new_teacher = (new_teacher_name or teacher_display(lesson) or "—").strip() or "—"
+        change_lines.extend(["", f"👤 Было: {old_teacher}", f"👤 Стало: {new_teacher}"])
 
     lines.extend(change_lines)
     return "\n".join(lines)
@@ -224,13 +224,13 @@ async def fetch_lesson_for_notify(lesson_id: str) -> dict[str, Any] | None:
     return serialize_record(row) if row else None
 
 
-async def _profile_short_name(user_id: Any) -> str | None:
+async def _profile_display_name(user_id: Any) -> str | None:
     if not user_id:
         return None
     async with get_pool().acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT last_name, first_name
+            SELECT last_name, first_name, middle_name
             FROM app.profiles
             WHERE user_id = $1::uuid
             """,
@@ -238,7 +238,9 @@ async def _profile_short_name(user_id: Any) -> str | None:
         )
     if not row:
         return None
-    return f"{row['last_name']} {row['first_name']}".strip() or None
+    parts = [row["last_name"], row["first_name"], row["middle_name"]]
+    name = " ".join(str(part).strip() for part in parts if part and str(part).strip())
+    return name or None
 
 
 async def list_lesson_notify_user_ids(lesson_id: str, teacher_id: str | None) -> list[str]:
@@ -366,10 +368,12 @@ async def notify_lesson_schedule_changed(
         new_starts_at=new_lesson.get("starts_at"),
         old_place=old_lesson.get("place"),
         new_place=new_lesson.get("place"),
-        old_teacher_name=await _profile_short_name(old_lesson.get("teacher_id")),
+        old_teacher_id=old_lesson.get("teacher_id"),
+        new_teacher_id=enriched.get("teacher_id") or new_lesson.get("teacher_id"),
+        old_teacher_name=await _profile_display_name(old_lesson.get("teacher_id")),
         new_teacher_name=(
             teacher_display(enriched)
-            or await _profile_short_name(new_lesson.get("teacher_id"))
+            or await _profile_display_name(new_lesson.get("teacher_id"))
         ),
     )
     user_ids = await list_lesson_notify_user_ids(

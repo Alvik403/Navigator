@@ -11,6 +11,8 @@
   const FORMATION_REASON_LABELS = {
     already_scheduled: "занятие уже создано",
     already_scheduled_today: "на трек уже есть занятие в этот день",
+    all_instructors_busy: "все инструкторы уже ведут группу",
+    groups_formed: "все ученики уже распределены",
     no_instructor: "нет инструктора на треке",
     no_members: "нет подходящих сотрудников",
     below_min_members: "меньше минимума группы",

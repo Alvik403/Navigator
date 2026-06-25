@@ -62,6 +62,7 @@ from domain import (
     create_formation_plan_range,
     list_formation_auto_log,
     get_track,
+    get_scheduled_member_ids_on_track_date,
     update_track_formation_settings,
     list_track_formation_slot_ids,
     run_auto_formation,
@@ -1031,9 +1032,13 @@ async def hr_formation_auto_run(
 @router.post("/lessons")
 async def hr_create_lesson(body: HrCreateLessonBody, user: AuthUser = Depends(require_hr)) -> dict[str, Any]:
     try:
-        teacher_id = body.teacher_id or await resolve_track_instructor(body.track_id)
+        teacher_id = body.teacher_id or await resolve_track_instructor(
+            body.track_id,
+            lesson_date=body.starts_at.date(),
+            slot_id=body.slot_id,
+        )
         if not teacher_id:
-            raise ValueError("Нет инструктора на треке — назначьте во вкладке «Инструкторы»")
+            raise ValueError("Нет инструктора на треке — назначьте во вкладке «Треки» или «Инструкторы»")
         await verify_user_role(teacher_id, "teacher")
         ends_at = body.ends_at or (body.starts_at + timedelta(hours=1))
         if ends_at <= body.starts_at:
@@ -1041,11 +1046,16 @@ async def hr_create_lesson(body: HrCreateLessonBody, user: AuthUser = Depends(re
         member_ids = body.member_ids
         if body.auto_form and member_ids is None:
             lesson_date = body.starts_at.date()
+            scheduled_today = await get_scheduled_member_ids_on_track_date(
+                track_id=body.track_id,
+                lesson_date=lesson_date,
+            )
             member_ids = await select_formation_members(
                 track_id=body.track_id,
                 lesson_date=lesson_date,
                 lesson_type=body.lesson_type,
                 max_members=body.max_members,
+                exclude_user_ids=scheduled_today,
             )
             if not member_ids:
                 raise ValueError("Нет подходящих сотрудников для формирования группы")
