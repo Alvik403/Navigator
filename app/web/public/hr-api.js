@@ -430,6 +430,7 @@
         max_id: row.id_max ? parseInt(row.id_max, 10) : null,
         status: inactive ? "inactive" : "active",
         id_curator: row.id_curator || null,
+        track: row.track ? String(row.track).trim() : null,
       };
     }).filter(function (r) { return r.last_name && r.first_name; });
     if (!items.length) {
@@ -482,6 +483,17 @@
 
   async function createLesson(data) {
     return api.post("/hr/lessons", data);
+  }
+
+  async function updateLesson(lessonId, data) {
+    var res = await api.patch("/hr/lessons/" + lessonId, data);
+    if (res.item) {
+      var mapped = mapLesson(res.item);
+      store.lessons = store.lessons.map(function (l) {
+        return String(l.id) === String(lessonId) ? mapped : l;
+      });
+    }
+    return res;
   }
 
   async function deleteLesson(lessonId) {
@@ -761,6 +773,7 @@
     patchUserStatus: patchUserStatus,
     listLessons: listLessons,
     createLesson: createLesson,
+    updateLesson: updateLesson,
     deleteLesson: deleteLesson,
     createTrack: createTrack,
     updateTrack: updateTrack,

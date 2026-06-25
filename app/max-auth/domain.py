@@ -345,6 +345,9 @@ async def bulk_create_users(rows: list[dict[str, Any]]) -> dict[str, Any]:
     skipped: list[dict[str, str]] = []
     for row in rows:
         try:
+            track_id = await resolve_track_ref(row.get("track"))
+            if row.get("track") and not track_id:
+                raise ValueError(f"Трек не найден: {row.get('track')}")
             profile = await create_user(
                 last_name=row["last_name"],
                 first_name=row["first_name"],
@@ -355,10 +358,55 @@ async def bulk_create_users(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 status=row.get("status", "active"),
                 id_curator=row.get("id_curator"),
             )
+            user_id = str(profile.get("id") or "")
+            role_code = row.get("role_code", "employee")
+            if track_id and user_id:
+                if role_code == "student":
+                    await assign_user_track(user_id=user_id, track_id=track_id)
+                elif role_code == "teacher":
+                    await sync_instructor_tracks(teacher_id=user_id, track_ids=[track_id])
             created.append(profile)
         except Exception as error:
             skipped.append({"row": str(row), "reason": str(error)})
     return {"created": created, "skipped": skipped, "created_count": len(created), "skipped_count": len(skipped)}
+
+
+async def resolve_track_ref(track_ref: str | None) -> str | None:
+    if not track_ref or not str(track_ref).strip():
+        return None
+    ref = str(track_ref).strip()
+    try:
+        track_uuid = uuid.UUID(ref)
+    except ValueError:
+        track_uuid = None
+    async with get_pool().acquire() as conn:
+        if track_uuid is not None:
+            row = await conn.fetchrow(
+                "SELECT id FROM app.tracks WHERE id = $1::uuid",
+                track_uuid,
+            )
+            return str(row["id"]) if row else None
+        row = await conn.fetchrow(
+            """
+            SELECT id FROM app.tracks
+            WHERE lower(code) = lower($1) OR lower(name) = lower($1)
+            ORDER BY CASE WHEN lower(code) = lower($1) THEN 0 ELSE 1 END
+            LIMIT 1
+            """,
+            ref,
+        )
+        if row:
+            return str(row["id"])
+        row = await conn.fetchrow(
+            """
+            SELECT id FROM app.tracks
+            WHERE lower(name) LIKE '%' || lower($1) || '%'
+            ORDER BY length(name)
+            LIMIT 1
+            """,
+            ref,
+        )
+        return str(row["id"]) if row else None
 
 
 async def get_group_hr_id(group_id: str) -> str | None:
@@ -969,6 +1017,40 @@ def _smu_is_work_day(work_days: int, off_days: int, anchor: date, target: date) 
     return pos < work_days
 
 
+CYCLE_222 = 6
+CYCLE_222_HALF = 3
+
+
+def _smu_period_for_shift(shift_number: int) -> str:
+    return "night" if int(shift_number or 1) in (2, 4) else "day"
+
+
+def _smu_shift_anchor_222(anchor: date, shift_number: int) -> date:
+    sn = int(shift_number or 1)
+    if sn in (3, 4):
+        return anchor + timedelta(days=CYCLE_222_HALF)
+    return anchor
+
+
+def _smu_cycle_position_222(anchor: date, shift_number: int, target: date) -> int:
+    shift_anchor = _smu_shift_anchor_222(anchor, shift_number)
+    return (target - shift_anchor).days % CYCLE_222
+
+
+def _smu_is_work_day_222(
+    anchor: date,
+    shift_number: int,
+    target: date,
+    period: str,
+) -> bool:
+    pos = _smu_cycle_position_222(anchor, shift_number, target)
+    if period == "day":
+        return pos < 2
+    if period == "night":
+        return pos >= 4
+    return False
+
+
 async def list_smu_patterns(*, active_only: bool = False) -> list[dict[str, Any]]:
     sql = """
         SELECT id, code, name, work_days, off_days, anchor_date, status,
@@ -1339,6 +1421,21 @@ def _smu_shift_anchor(anchor: date, work_days: int, off_days: int, shift_number:
     return anchor
 
 
+def _smu_formula_state_222(anchor: date, shift_number: int, target: date) -> str:
+    pos = _smu_cycle_position_222(anchor, shift_number, target)
+    if pos < 2:
+        return "day"
+    if pos >= 4:
+        return "night"
+    return "off"
+
+
+def _smu_is_working_state(state: str | None) -> bool:
+    if not state:
+        return False
+    return state in ("day", "night", "extra_day", "extra_night", "work", "extra")
+
+
 def _smu_effective_work_day(
     *,
     work_days: int,
@@ -1347,15 +1444,17 @@ def _smu_effective_work_day(
     shift_number: int,
     target: date,
     override_state: str | None,
+    period: str | None = None,
 ) -> bool:
-    if override_state == "extra":
-        return True
-    if override_state == "work":
-        return True
+    del period
     if override_state == "off":
         return False
-    shift_anchor = _smu_shift_anchor(anchor, work_days, off_days, shift_number)
-    return _smu_is_work_day(work_days, off_days, shift_anchor, target)
+    if _smu_is_working_state(override_state):
+        return True
+    cycle = int(work_days or 0) + int(off_days or 0)
+    if cycle <= 0:
+        return False
+    return _smu_formula_state_222(anchor, shift_number, target) != "off"
 
 
 async def list_smu_pattern_overrides(
@@ -1365,12 +1464,12 @@ async def list_smu_pattern_overrides(
     to_date: date | None = None,
 ) -> list[dict[str, Any]]:
     sql = """
-        SELECT id, smu_pattern_id, shift_date, shift_number, state, note, created_at, updated_at
+        SELECT id, smu_pattern_id, shift_date, shift_number, period, state, note, created_at, updated_at
         FROM app.smu_pattern_day_overrides
         WHERE smu_pattern_id = $1::uuid
           AND ($2::date IS NULL OR shift_date >= $2)
           AND ($3::date IS NULL OR shift_date <= $3)
-        ORDER BY shift_date, shift_number
+        ORDER BY shift_date, shift_number, period
     """
     async with get_pool().acquire() as conn:
         rows = await conn.fetch(
@@ -1387,11 +1486,14 @@ async def set_smu_pattern_override(
     *,
     shift_date: date,
     shift_number: int,
+    period: str = "day",
     state: str | None,
     note: str | None = None,
 ) -> dict[str, Any] | None:
     if shift_number not in (1, 2, 3, 4):
         raise ValueError("Номер смены должен быть от 1 до 4")
+    del period
+    allowed = ("day", "night", "extra_day", "extra_night", "off")
     async with get_pool().acquire() as conn:
         if state is None or state == "auto":
             row = await conn.fetchrow(
@@ -1400,25 +1502,26 @@ async def set_smu_pattern_override(
                 WHERE smu_pattern_id = $1::uuid
                   AND shift_date = $2
                   AND shift_number = $3
-                RETURNING id
+                RETURNING id, smu_pattern_id, shift_date, shift_number, period, state, note, created_at, updated_at
                 """,
                 uuid.UUID(pattern_id),
                 shift_date,
                 shift_number,
             )
             return serialize_record(row) if row else None
-        if state not in ("work", "off", "extra"):
-            raise ValueError("state должен быть work, off, extra или auto")
+        if state not in allowed:
+            raise ValueError("state должен быть day, night, extra_day, extra_night, off или auto")
         row = await conn.fetchrow(
             """
             INSERT INTO app.smu_pattern_day_overrides
-                (smu_pattern_id, shift_date, shift_number, state, note)
-            VALUES ($1::uuid, $2, $3, $4, $5)
+                (smu_pattern_id, shift_date, shift_number, period, state, note)
+            VALUES ($1::uuid, $2, $3, 'day', $4, $5)
             ON CONFLICT (smu_pattern_id, shift_date, shift_number) DO UPDATE SET
                 state = EXCLUDED.state,
+                period = 'day',
                 note = COALESCE(EXCLUDED.note, app.smu_pattern_day_overrides.note),
                 updated_at = now()
-            RETURNING id, smu_pattern_id, shift_date, shift_number, state, note, created_at, updated_at
+            RETURNING id, smu_pattern_id, shift_date, shift_number, period, state, note, created_at, updated_at
             """,
             uuid.UUID(pattern_id),
             shift_date,
@@ -2600,6 +2703,16 @@ async def update_lesson(
     title: str | None = None,
 ) -> dict[str, Any]:
     async with get_pool().acquire() as conn:
+        old_row = await conn.fetchrow(
+            """
+            SELECT id, teacher_id, starts_at, ends_at, place, lesson_type, title
+            FROM app.lessons WHERE id = $1::uuid
+            """,
+            uuid.UUID(lesson_id),
+        )
+        if not old_row:
+            raise ValueError("Занятие не найдено")
+        old_lesson = serialize_record(old_row)
         if teacher_id is not None:
             await conn.execute(
                 "UPDATE app.lessons SET teacher_id = $2::uuid WHERE id = $1::uuid",
@@ -2612,6 +2725,19 @@ async def update_lesson(
                 uuid.UUID(lesson_id),
                 starts_at,
             )
+            if ends_at is None:
+                from lesson_notifications import _normalize_dt
+
+                old_start = _normalize_dt(old_lesson.get("starts_at"))
+                old_end = _normalize_dt(old_lesson.get("ends_at"))
+                if old_start and old_end:
+                    duration = old_end - old_start
+                    new_end = _normalize_dt(starts_at) + duration
+                    await conn.execute(
+                        "UPDATE app.lessons SET ends_at = $2 WHERE id = $1::uuid",
+                        uuid.UUID(lesson_id),
+                        new_end,
+                    )
         if ends_at is not None:
             await conn.execute(
                 "UPDATE app.lessons SET ends_at = $2 WHERE id = $1::uuid",
@@ -2637,21 +2763,37 @@ async def update_lesson(
                 title,
             )
         row = await conn.fetchrow(
-            """
+            f"""
             SELECT l.id, l.group_id, l.reporting_group_id, l.track_id, l.slot_id,
                    l.teacher_id, l.starts_at, l.ends_at, l.place, l.lesson_type, l.title,
-                   g.name AS group_name, t.name AS track_name, cs.name AS slot_name
+                   {LESSON_TITLE_SQL} AS lesson_title,
+                   g.name AS group_name, t.name AS track_name, cs.name AS slot_name,
+                   tp.last_name AS teacher_last_name, tp.first_name AS teacher_first_name
             FROM app.lessons l
-            LEFT JOIN app.groups g ON g.id = COALESCE(l.reporting_group_id, l.group_id)
             LEFT JOIN app.tracks t ON t.id = l.track_id
+            LEFT JOIN app.groups g ON g.id = COALESCE(l.reporting_group_id, l.group_id)
             LEFT JOIN app.conveyor_slots cs ON cs.id = l.slot_id
+            LEFT JOIN app.profiles tp ON tp.user_id = l.teacher_id
             WHERE l.id = $1::uuid
             """,
             uuid.UUID(lesson_id),
         )
     if not row:
         raise ValueError("Занятие не найдено")
-    return serialize_record(row)
+    new_lesson = serialize_record(row)
+    if new_lesson.get("teacher_last_name") or new_lesson.get("teacher_first_name"):
+        new_lesson["teacher_name"] = (
+            f"{new_lesson.get('teacher_last_name', '')} {new_lesson.get('teacher_first_name', '')}".strip()
+        )
+    from lesson_notifications import notify_lesson_schedule_changed, schedule_fields_changed
+
+    if schedule_fields_changed(old_lesson, new_lesson):
+        await notify_lesson_schedule_changed(
+            lesson_id,
+            old_lesson=old_lesson,
+            new_lesson=new_lesson,
+        )
+    return new_lesson
 
 
 async def delete_lesson(
@@ -2661,6 +2803,7 @@ async def delete_lesson(
     actor_name: str | None = None,
 ) -> None:
     from audit import write_audit_log
+    from lesson_notifications import fetch_lesson_for_notify, notify_lesson_cancelled
 
     async with get_pool().acquire() as conn:
         lesson = await conn.fetchrow(
@@ -2681,6 +2824,11 @@ async def delete_lesson(
             "lesson": serialize_record(lesson),
             "member_ids": [str(m["user_id"]) for m in members],
         }
+
+    lesson_snapshot = await fetch_lesson_for_notify(lesson_id) or payload["lesson"]
+    await notify_lesson_cancelled(lesson_snapshot)
+
+    async with get_pool().acquire() as conn:
         result = await conn.execute(
             "DELETE FROM app.lessons WHERE id = $1::uuid",
             uuid.UUID(lesson_id),

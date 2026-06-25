@@ -15,6 +15,7 @@ COPY bot_contact.py .
 COPY bot_events.py .
 COPY bot_handlers.py .
 COPY bot_notify.py .
+COPY lesson_notifications.py .
 COPY lesson_reminder_worker.py .
 COPY formation_worker.py .
 COPY routers ./routers

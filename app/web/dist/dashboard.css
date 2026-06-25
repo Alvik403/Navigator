@@ -680,8 +680,20 @@
   align-items: center;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
+  cursor: pointer;
 }
 
+.schedule-lesson-card:hover {
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.schedule-lesson-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.schedule-lesson-edit,
 .schedule-lesson-delete {
   flex-shrink: 0;
   min-width: 32px;
@@ -689,20 +701,24 @@
 }
 
 .cal-lesson-block.hr-lesson-block {
-  padding-right: 22px;
+  padding-right: 44px;
+  cursor: pointer;
 }
 
+.cal-lesson-block.hr-editable:hover {
+  background: #dbeafe;
+}
+
+.cal-lesson-edit,
 .cal-lesson-delete {
   position: absolute;
   top: 2px;
-  right: 2px;
   width: 20px;
   height: 20px;
   padding: 0;
   border: none;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.92);
-  color: #b91c1c;
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
@@ -710,7 +726,19 @@
   transition: opacity 0.15s;
 }
 
-.cal-lesson-block.hr-lesson-block:hover .cal-lesson-delete {
+.cal-lesson-edit {
+  right: 22px;
+  color: #1d4ed8;
+  font-size: 12px;
+}
+
+.cal-lesson-delete {
+  right: 2px;
+  color: #b91c1c;
+}
+
+.cal-lesson-block.hr-lesson-block:hover .cal-lesson-delete,
+.cal-lesson-block.hr-lesson-block:hover .cal-lesson-edit {
   opacity: 1;
 }
 

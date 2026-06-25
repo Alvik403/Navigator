@@ -143,6 +143,39 @@
     </div>
   </div>
 
+  <div class="overlay" id="editLessonOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <div><h3 id="editLessonTitle">Редактировать занятие</h3><p id="editLessonSubtitle">Изменения отправятся участникам, инструктору и кураторам в MAX</p></div>
+        <button type="button" class="modal-close" id="editLessonClose" aria-label="Закрыть" data-icon="x" data-icon-pos="only"></button>
+      </div>
+      <div class="modal-scroll">
+        <div class="edit-form">
+          <div class="edit-row">
+            <div><label class="ui-label">Трек</label><input class="cell-input" id="elTrack" readonly style="width:100%;max-width:none;background:var(--surface-muted,#f8fafc)"></div>
+            <div><label class="ui-label">Инструктор *</label><div id="elTeacher"></div></div>
+          </div>
+          <div class="edit-row">
+            <div><label class="ui-label">Дата *</label><input class="cell-input" type="date" id="elDate" style="width:100%;max-width:none"></div>
+            <div><label class="ui-label">Начало *</label><input class="cell-input" type="time" id="elTime" style="width:100%;max-width:none"></div>
+          </div>
+          <div class="edit-row">
+            <div><label class="ui-label">Окончание</label><input class="cell-input" type="time" id="elTimeEnd" style="width:100%;max-width:none"></div>
+            <div><label class="ui-label">Тип занятия</label><div id="elType"></div></div>
+          </div>
+          <div class="edit-row">
+            <div><label class="ui-label">Место</label><input class="cell-input" id="elPlace" placeholder="Площадка / аудитория" style="width:100%;max-width:none"></div>
+            <div><label class="ui-label">Название</label><input class="cell-input" id="elTitle" placeholder="Необязательно" style="width:100%;max-width:none"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn secondary" id="elCancelBtn" data-icon="x">Отмена</button>
+        <button type="button" class="btn" id="elSaveBtn" data-icon="check">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="banReasonOverlay">
     <div class="modal modal-narrow">
       <div class="modal-header">
@@ -279,6 +312,7 @@
     phone: { label: "Телефон", required: false },
     status: { label: "Статус", required: false },
     id_curator: { label: "Куратор", required: false },
+    track: { label: "Трек", required: false },
   };
 
   const MODAL_CONFIG = {
@@ -286,13 +320,13 @@
       title: "Добавить учеников",
       type: "users",
       roleCode: "student",
-      fields: ["last_name", "first_name", "middle_name", "id_max", "phone", "status", "id_curator"],
+      fields: ["last_name", "first_name", "middle_name", "id_max", "phone", "status", "id_curator", "track"],
     },
     teachers: {
       title: "Добавить преподавателей",
       type: "users",
       roleCode: "teacher",
-      fields: ["last_name", "first_name", "middle_name", "id_max", "phone", "status"],
+      fields: ["last_name", "first_name", "middle_name", "id_max", "phone", "status", "track"],
     },
     curators: {
       title: "Добавить кураторов",
@@ -417,8 +451,9 @@
   const formationCmps = {};
   const filterCmps = {};
   const lessonAssignCmps = {};
+  const editLessonCmps = {};
   const modalSelectCmps = [];
-  const modalFieldCmps = { max: {}, phone: {}, curator: {} };
+  const modalFieldCmps = { max: {}, phone: {}, curator: {}, track: {} };
   const tableSelectCmps = [];
 
   function destroyCmps(list) { list.forEach(c => c?.destroy?.()); list.length = 0; }
@@ -426,14 +461,64 @@
     Object.values(modalFieldCmps.max).forEach(c => c?.destroy?.());
     Object.values(modalFieldCmps.phone).forEach(c => c?.destroy?.());
     Object.values(modalFieldCmps.curator).forEach(c => c?.destroy?.());
+    Object.values(modalFieldCmps.track).forEach(c => c?.destroy?.());
     modalFieldCmps.max = {};
     modalFieldCmps.phone = {};
     modalFieldCmps.curator = {};
+    modalFieldCmps.track = {};
     destroyCmps(modalSelectCmps);
   }
   function curatorComboList() {
     return D.usersByRole("curator").map(c => ({ id: String(c.id), name: D.fullName(c) }));
   }
+  function activeTracksList() {
+    return (D.tracks?.() || []).filter(t => t.status !== "inactive");
+  }
+
+  function trackModalOpts() {
+    return [{ value: "", label: "— не выбран —" }, ...activeTracksList().map(t => ({ value: String(t.id), label: t.name }))];
+  }
+
+  function resolveTrackRef(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const v = raw.split(",")[0].trim();
+    const tracks = activeTracksList();
+    if (HrFields.isUuid(v)) {
+      const hit = tracks.find(t => String(t.id) === v);
+      return hit ? String(hit.id) : null;
+    }
+    const lower = v.toLowerCase();
+    const byCode = tracks.find(t => String(t.code || "").toLowerCase() === lower);
+    if (byCode) return String(byCode.id);
+    const byName = tracks.find(t => String(t.name || "").toLowerCase() === lower);
+    if (byName) return String(byName.id);
+    const partial = tracks.find(t => String(t.name || "").toLowerCase().includes(lower));
+    return partial ? String(partial.id) : null;
+  }
+
+  function trackLabelById(trackId) {
+    if (!trackId) return "";
+    const hit = activeTracksList().find(t => String(t.id) === String(trackId));
+    return hit?.name || "";
+  }
+
+  function trackExportLabel(userId, roleCode) {
+    if (roleCode === "student") {
+      return (D.studentTracks?.(userId) || []).map(t => t.name).join(", ");
+    }
+    if (roleCode === "teacher") {
+      return instructorTrackNames(userId).join(", ");
+    }
+    return "";
+  }
+
+  function trackRefForApi(row) {
+    const id = resolveTrackRef(row.track);
+    if (id) return trackLabelById(id) || id;
+    return String(row.track || "").trim() || null;
+  }
+
   function mountCuratorCombo(container, initialId, onChange) {
     return HrFields.createCuratorCombo(container, {
       curators: curatorComboList(),
@@ -452,6 +537,7 @@
       if (maxInp) row.id_max = modalFieldCmps.max[ri]?.getNormalized?.() ?? HrFields.normalizeMaxId(maxInp.value);
       if (phoneInp) row.phone = modalFieldCmps.phone[ri]?.getNormalized?.() ?? HrFields.normalizePhone(phoneInp.value);
       if (modalFieldCmps.curator[ri]) row.id_curator = modalFieldCmps.curator[ri].getValue();
+      if (modalFieldCmps.track[ri]) row.track = modalFieldCmps.track[ri].getValue?.() || row.track || "";
     });
   }
   function validateModalRows(rows, cfg) {
@@ -476,6 +562,9 @@
       }
       if (row.id_curator && !HrFields.isUuid(row.id_curator)) {
         return `Строка ${i + 1}: выберите куратора из списка или укажите корректный UUID`;
+      }
+      if (row.track && !resolveTrackRef(row.track)) {
+        return `Строка ${i + 1}: трек «${row.track}» не найден`;
       }
     }
     return null;
@@ -514,6 +603,13 @@
     const parts = dateStr.split("-").map(Number);
     const tp = timeStr.split(":").map(Number);
     return new Date(parts[0], parts[1] - 1, parts[2], tp[0], tp[1] || 0).toISOString();
+  }
+
+  function timeInputFromIso(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
   }
 
   function teacherOpts(trackId) {
@@ -1283,6 +1379,7 @@
       if (f === "middle_name") return u.middleName || "";
       if (f === "status") return D.statusLabel[u.status];
       if (f === "id_curator") return u.id_curator || "";
+      if (f === "track") return trackExportLabel(u.id, cfg.roleCode);
       return u[f] || "";
     }))];
     downloadWorkbook(rows, key + ".xlsx");
@@ -3078,8 +3175,11 @@
     const items = [];
     smuMonthDayStrings(monthVal).forEach(dateStr => {
       [1, 2, 3, 4].forEach(shift => {
-        const working = SmuCalendars.isWorkDayFormula(formulaPattern, dateStr, shift);
-        items.push({ dateStr, shift, state: working ? "work" : "off" });
+        items.push({
+          dateStr,
+          shift,
+          state: SmuCalendars.formulaState222(formulaPattern, dateStr, shift),
+        });
       });
     });
     return items;
@@ -3099,13 +3199,13 @@
     });
     renderSmuCreateCyclePreview();
     refreshSmuCalendarGridHost(smuDraftPattern());
-    showToast(`Месяц заполнен по шаблону 2/2 (якорь ${formula.anchor_date})`, "success");
+    showToast(`Месяц заполнен по шаблону 2·2·2 (якорь ${formula.anchor_date})`, "success");
   }
 
   async function fillSmuPatternMonth22(pattern, anchorDate, monthVal) {
     const formula = smuVirtualPattern22(anchorDate);
     const label = formatSmuDateRu(formula.anchor_date);
-    if (!window.confirm(`Заполнить ${monthVal} по шаблону 2/2?\nЯкорь: ${label}\nТекущие отметки за этот месяц будут перезаписаны.`)) return;
+    if (!window.confirm(`Заполнить ${monthVal} по шаблону 2·2·2?\nЯкорь: ${label}\nТекущие отметки за этот месяц будут перезаписаны.`)) return;
     const items = computeSmuPresetOverrides(formula, monthVal);
     for (const item of items) {
       await HrApi.setSmuPatternOverride(pattern.id, item.dateStr, item.shift, item.state);
@@ -3118,7 +3218,7 @@
     const fresh = getSelectedSmuPattern() || pattern;
     await ensureSmuOverridesLoaded(fresh, monthVal);
     refreshSmuCalendarGridHost(fresh);
-    showToast(`График заполнен: 2/2 · ${items.length} отметок`, "success");
+    showToast(`График заполнен: 2·2·2 · ${items.length} отметок`, "success");
   }
 
   async function clearSmuPatternMonth(pattern, monthVal) {
@@ -3145,9 +3245,9 @@
     const anchorVal = options.anchorValue || localDateStr(new Date());
     return `<div class="smu-cal-preset-toolbar">
       <div class="smu-preset-row smu-preset-row--inline">
-        <span class="smu-preset-label">Шаблон 2/2:</span>
+        <span class="smu-preset-label">Шаблон 2·2·2:</span>
         <button type="button" class="smu-preset-chip smu-preset-chip--day" id="${prefix}SmuFill22Btn">
-          <span class="smu-preset-chip-title">2/2</span>
+          <span class="smu-preset-chip-title">2 д · 2 в · 2 н</span>
           <span class="smu-preset-chip-sub">заполнить месяц</span>
         </button>
         <button type="button" class="btn small secondary" id="${prefix}SmuClearMonthBtn">Очистить месяц</button>
@@ -3159,7 +3259,7 @@
   async function deleteHrLesson(lesson) {
     const title = lesson.title || lesson.track_name || "занятие";
     const when = [lesson.date, lesson.time].filter(Boolean).join(" ");
-    if (!window.confirm(`Удалить занятие «${title}»${when ? `\n${when}` : ""}?\n\nУчастники и отметки будут удалены.`)) return;
+    if (!window.confirm(`Удалить занятие «${title}»${when ? `\n${when}` : ""}?\n\nУчастники получат уведомление об отмене.`)) return;
     try {
       await HrApi.deleteLesson(lesson.id);
       await reloadData();
@@ -3170,12 +3270,109 @@
     }
   }
 
+  function clearEditLessonCmps() {
+    Object.keys(editLessonCmps).forEach(k => editLessonCmps[k]?.destroy?.());
+    Object.keys(editLessonCmps).forEach(k => delete editLessonCmps[k]);
+  }
+
+  function closeEditLessonModal() {
+    $("#editLessonOverlay").classList.remove("open");
+    clearEditLessonCmps();
+    state.editLesson = null;
+  }
+
+  function openEditLessonModal(lesson) {
+    clearEditLessonCmps();
+    state.editLesson = lesson;
+    const trackId = lesson.id_track || lesson.track_id || "";
+    $("#elTrack").value = lesson.track_name || "—";
+    editLessonCmps.teacher = UI.createSearchSelect($("#elTeacher"), {
+      options: teacherOpts(trackId),
+      value: String(lesson.id_teacher || lesson.teacher_id || ""),
+      placeholder: "Выберите инструктора…",
+    });
+    editLessonCmps.type = UI.createSelect($("#elType"), {
+      options: [
+        { value: "practice", label: "Практика" },
+        { value: "lecture", label: "Лекция" },
+      ],
+      value: lesson.lesson_type || "practice",
+    });
+    $("#elDate").value = lesson.date || (lesson.startsAt ? dateStr(new Date(lesson.startsAt)) : localDateStr(new Date()));
+    $("#elTime").value = timeInputFromIso(lesson.startsAt) || lesson.time || "10:00";
+    $("#elTimeEnd").value = timeInputFromIso(lesson.endsAt) || lesson.timeEnd || "";
+    $("#elPlace").value = lesson.place || "";
+    $("#elTitle").value = (lesson.title && !["Практика", "Лекция", "Занятие"].includes(lesson.title)) ? lesson.title : "";
+    $("#editLessonOverlay").classList.add("open");
+  }
+
+  async function saveEditLesson() {
+    const lesson = state.editLesson;
+    if (!lesson) return;
+    const teacherId = editLessonCmps.teacher?.getValue?.();
+    const lessonType = editLessonCmps.type?.getValue?.() || "practice";
+    const date = $("#elDate").value;
+    const time = $("#elTime").value;
+    const timeEnd = $("#elTimeEnd").value;
+    const place = $("#elPlace").value.trim();
+    const title = $("#elTitle").value.trim() || null;
+    if (!teacherId || !date || !time) return showToast("Заполните инструктора, дату и время", "warning");
+    const starts_at = localDateTimeIso(date, time);
+    const payload = {
+      teacher_id: teacherId,
+      starts_at,
+      place: place,
+      lesson_type: lessonType,
+      title,
+    };
+    if (timeEnd) {
+      payload.ends_at = localDateTimeIso(date, timeEnd);
+      if (new Date(payload.ends_at) <= new Date(starts_at)) {
+        return showToast("Время окончания должно быть позже начала", "warning");
+      }
+    }
+    try {
+      await HrApi.updateLesson(lesson.id, payload);
+      await reloadData();
+      closeEditLessonModal();
+      showToast("Занятие обновлено", "success");
+      renderHrSchedule();
+    } catch (err) {
+      showToast(err.message || "Не удалось сохранить", "error");
+    }
+  }
+
+  function bindHrLessonActions(host, lessons) {
+    if (!host) return;
+    host.querySelectorAll("[data-edit-lesson]").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const item = lessons.find(l => String(l.id) === String(btn.dataset.editLesson));
+        if (item) openEditLessonModal(item);
+      };
+    });
+    host.querySelectorAll("[data-delete-lesson]").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const item = lessons.find(l => String(l.id) === String(btn.dataset.deleteLesson));
+        if (item) deleteHrLesson(item);
+      };
+    });
+    host.querySelectorAll("[data-open-lesson]").forEach(card => {
+      card.onclick = (e) => {
+        if (e.target.closest("[data-edit-lesson],[data-delete-lesson]")) return;
+        const item = lessons.find(l => String(l.id) === String(card.dataset.openLesson));
+        if (item) openEditLessonModal(item);
+      };
+    });
+  }
+
   function smuShiftAnchorDate(pattern, shiftNumber) {
     return SmuCalendars.shiftAnchorDate(pattern, shiftNumber);
   }
 
   function smuIsWorkDay(pattern, dateStr, shiftNumber) {
-    return SmuCalendars.isWorkDayFormula(pattern, dateStr, shiftNumber);
+    return SmuCalendars.isWorkingState(SmuCalendars.formulaState222(pattern, dateStr, shiftNumber));
   }
 
   function smuOverrideRecord(patternId, dateStr, shiftNumber) {
@@ -3183,7 +3380,9 @@
       const stateVal = state.smuDraftOverrides[smuDraftOverrideKey(dateStr, shiftNumber)];
       return stateVal ? { state: stateVal } : null;
     }
-    return D.smuOverrideAt?.(patternId, dateStr, shiftNumber) || null;
+    const row = D.smuOverrideAt?.(patternId, dateStr, shiftNumber) || null;
+    if (!row) return null;
+    return { ...row, state: SmuCalendars.normalizeState(row.state, row.period) };
   }
 
   function smuOverrideMode(patternId, dateStr, shiftNumber) {
@@ -3191,32 +3390,15 @@
   }
 
   function smuEffectiveWorkDay(pattern, dateStr, shiftNumber) {
-    return SmuCalendars.effectiveWorkDay(smuOverrideMode.bind(null), pattern, dateStr, shiftNumber);
+    return SmuCalendars.effectiveWorkDay(smuOverrideMode, pattern, dateStr, shiftNumber);
   }
 
-  function smuNextOverrideState(current) {
-    return SmuCalendars.nextOverrideState(current);
+  function smuEffectiveState(pattern, dateStr, shiftNumber) {
+    return SmuCalendars.effectiveState(smuOverrideMode, pattern, dateStr, shiftNumber);
   }
 
-  function smuShiftHalfTitle(pattern, dateStr, shiftNumber) {
-    const mode = smuOverrideMode(pattern.id, dateStr, shiftNumber);
-    const formula = smuIsWorkDay(pattern, dateStr, shiftNumber);
-    const effective = smuEffectiveWorkDay(pattern, dateStr, shiftNumber);
-    const shiftLabel = shiftNumber === 2 ? "Ночь (С2)" : "День (С1)";
-    const modeLabel = mode === "work" ? "рабочий" : mode === "off" ? "выходной" : mode === "extra" ? "допсмена" : (smuIsManualPattern(pattern) ? "не задано" : `по формуле ${pattern.work_days}/${pattern.off_days}`);
-    const status = effective ? "рабочий" : "выходной";
-    return `${shiftLabel}: ${status} · ${modeLabel}${mode === "auto" ? (formula ? "" : " (формула: вых.)") : ""} · клик — сменить`;
-  }
-
-  function smuShiftHalfClass(pattern, dateStr, shiftNumber) {
-    const mode = smuOverrideMode(pattern.id, dateStr, shiftNumber);
-    const working = smuEffectiveWorkDay(pattern, dateStr, shiftNumber);
-    let cls = `smu-shift-half shift-${shiftNumber}`;
-    cls += working ? " is-work" : " is-off";
-    if (mode === "work") cls += " is-force-work";
-    else if (mode === "off") cls += " is-force-off";
-    else cls += " is-auto";
-    return cls;
+  function smuStateLabel(state) {
+    return SmuCalendars.statusLabel(state);
   }
 
   function smuMonthBounds(monthVal) {
@@ -3243,18 +3425,18 @@
   }
 
   async function setSmuOverrideState(pattern, dateStr, shiftNumber, stateVal) {
-    const labels = { work: "Рабочий", off: "Выходной", extra: "Допсмена", auto: "Не задано" };
+    const label = stateVal === "auto" ? "По графику" : smuStateLabel(stateVal);
     try {
       if (isSmuDraftPattern(pattern)) {
         const key = smuDraftOverrideKey(dateStr, shiftNumber);
         if (stateVal === "auto") delete state.smuDraftOverrides[key];
         else state.smuDraftOverrides[key] = stateVal;
-        showToast(`${SmuCalendars.shiftShort(shiftNumber)} · ${formatSmuDayShort(dateStr)} → ${labels[stateVal] || stateVal}`, "success");
+        showToast(`${SmuCalendars.shiftShort(shiftNumber)} · ${formatSmuDayShort(dateStr)} → ${label}`, "success");
         refreshSmuCalendarGridHost(pattern);
         return;
       }
       await HrApi.setSmuPatternOverride(pattern.id, dateStr, shiftNumber, stateVal);
-      showToast(`${SmuCalendars.shiftShort(shiftNumber)} · ${formatSmuDayShort(dateStr)} → ${labels[stateVal] || stateVal}`, "success");
+      showToast(`${SmuCalendars.shiftShort(shiftNumber)} · ${formatSmuDayShort(dateStr)} → ${label}`, "success");
       refreshSmuCalendarGridHost(pattern);
     } catch (err) {
       showToast(err.message || "Не удалось сохранить день", "error");
@@ -3284,69 +3466,39 @@
 
   function showSmuCellPicker(pattern, dateStr, shiftNumber, anchorEl) {
     closeSmuCellPicker();
-    let selectedShift = parseInt(shiftNumber, 10) || 1;
-    let step = 2;
+    const selectedShift = parseInt(shiftNumber, 10) || 1;
+    const shiftMeta = SmuCalendars.SHIFTS.find(s => s.n === selectedShift);
+    const current = smuOverrideMode(pattern.id, dateStr, selectedShift);
+    const effective = smuEffectiveState(pattern, dateStr, selectedShift);
 
     const picker = document.createElement("div");
     picker.id = "smuCellPicker";
-    picker.className = "smu-cell-picker smu-cell-picker--steps";
+    picker.className = "smu-cell-picker smu-cell-picker--states";
+    const stateBtns = SmuCalendars.pickerOptions().map(opt => {
+      const active = current === opt.id ? " active" : (current === "auto" && effective === opt.id ? " active-dim" : "");
+      const cls = `smu-cell-pick smu-cell-pick--${opt.id.replace("_", "-")}${active}`;
+      return `<button type="button" class="${cls}" data-pick-state="${opt.id}">${opt.picker}</button>`;
+    }).join("");
 
-    function paint() {
-      const shiftMeta = SmuCalendars.SHIFTS.find(s => s.n === selectedShift);
-      if (step === 1) {
-        picker.innerHTML = `<div class="smu-cell-picker-title">${formatSmuDayShort(dateStr)}</div>
-          <div class="smu-cell-picker-step-label">1. Смена</div>
-          <div class="smu-cell-picker-shifts">${SmuCalendars.SHIFTS.map(s => {
-            const active = s.n === selectedShift ? " active" : "";
-            const kindCls = s.kind === "night" ? "smu-cell-shift--night" : "smu-cell-shift--day";
-            return `<button type="button" class="smu-cell-shift ${kindCls}${active}" data-pick-shift="${s.n}">
-              <span class="smu-cell-shift-kind">${s.sub}</span>
-              <span class="smu-cell-shift-num">${s.title}</span>
-            </button>`;
-          }).join("")}</div>`;
-        picker.querySelectorAll("[data-pick-shift]").forEach(btn => {
-          btn.onclick = (ev) => {
-            ev.stopPropagation();
-            selectedShift = parseInt(btn.dataset.pickShift, 10) || 1;
-            step = 2;
-            paint();
-          };
-        });
-        return;
-      }
+    picker.innerHTML = `<div class="smu-cell-picker-title">${formatSmuDayShort(dateStr)}</div>
+      <div class="smu-cell-picker-step-label">${shiftMeta ? shiftMeta.title : `С${selectedShift}`}</div>
+      <div class="smu-cell-picker-status smu-cell-picker-status--grid">${stateBtns}</div>
+      ${current !== "auto" ? `<button type="button" class="smu-cell-pick smu-cell-pick--reset" data-pick-state="auto">По графику</button>` : ""}`;
 
-      const current = smuOverrideMode(pattern.id, dateStr, selectedShift);
-      picker.innerHTML = `<div class="smu-cell-picker-title">${formatSmuDayShort(dateStr)}</div>
-        <div class="smu-cell-picker-step-label">2. Статус · ${shiftMeta ? `${shiftMeta.sub} (${shiftMeta.title})` : `С${selectedShift}`}</div>
-        <button type="button" class="smu-cell-pick smu-cell-pick--reset" data-pick-step="1">← Смена</button>
-        <div class="smu-cell-picker-status">
-          <button type="button" class="smu-cell-pick smu-cell-pick--work${current === "work" ? " active" : ""}" data-pick-state="work">Рабочий</button>
-          <button type="button" class="smu-cell-pick smu-cell-pick--off${current === "off" ? " active" : ""}" data-pick-state="off">Выходной</button>
-          <button type="button" class="smu-cell-pick smu-cell-pick--extra${current === "extra" ? " active" : ""}" data-pick-state="extra">Допсмена</button>
-        </div>
-        ${current !== "auto" ? `<button type="button" class="smu-cell-pick smu-cell-pick--reset" data-pick-state="auto">Очистить</button>` : ""}`;
-
-      picker.querySelector("[data-pick-step]")?.addEventListener("click", (ev) => {
+    picker.querySelectorAll("[data-pick-state]").forEach(btn => {
+      btn.onclick = (ev) => {
         ev.stopPropagation();
-        step = 1;
-        paint();
-      });
-      picker.querySelectorAll("[data-pick-state]").forEach(btn => {
-        btn.onclick = (ev) => {
-          ev.stopPropagation();
-          setSmuOverrideState(pattern, dateStr, selectedShift, btn.dataset.pickState).catch(err => showToast(err.message || "Ошибка", "error"));
-          closeSmuCellPicker();
-        };
-      });
-    }
+        setSmuOverrideState(pattern, dateStr, selectedShift, btn.dataset.pickState).catch(err => showToast(err.message || "Ошибка", "error"));
+        closeSmuCellPicker();
+      };
+    });
 
     const rect = anchorEl.getBoundingClientRect();
     picker.style.position = "absolute";
     picker.style.top = `${rect.bottom + window.scrollY + 4}px`;
-    picker.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 260)}px`;
+    picker.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 280)}px`;
     picker.style.zIndex = "1000";
     document.body.appendChild(picker);
-    paint();
     setTimeout(() => document.addEventListener("click", smuCellPickerOutsideClose, true), 0);
   }
 
@@ -3371,7 +3523,7 @@
     return Object.values(D.smuOverrides?.() || {}).filter(row =>
       String(row.smu_pattern_id) === String(patternId)
       && String(row.shift_date).slice(0, 7) === monthVal
-      && row.state === "extra"
+      && (row.state === "extra_day" || row.state === "extra_night" || row.state === "extra")
     ).length;
   }
 
@@ -3858,7 +4010,8 @@
 
   function smuMemberStatusOnDate(pattern, assignment, dateStr) {
     const shift = smuShiftNumber(assignment);
-    if (smuOverrideMode(pattern.id, dateStr, shift) === "extra") {
+    const st = smuEffectiveState(pattern, dateStr, shift);
+    if (st === "extra_day" || st === "extra_night" || st === "extra") {
       return { kind: "extra", shift };
     }
     if (smuEffectiveWorkDay(pattern, dateStr, shift)) return { kind: "work", shift };
@@ -3880,31 +4033,25 @@
   }
 
   function smuLegendHtml() {
-    return `<div class="smu-legend smu-legend--compact" aria-label="Обозначения">
-      <span class="smu-legend-item"><i class="smu-legend-swatch shift1"></i>Рабочий</span>
-      <span class="smu-legend-item"><i class="smu-legend-swatch off"></i>Выходной</span>
-      <span class="smu-legend-item"><i class="smu-legend-swatch extra"></i>Допсмена</span>
+    return `<div class="smu-legend smu-legend--compact smu-legend--states" aria-label="Обозначения">
+      <span class="smu-legend-item"><i class="smu-legend-swatch smu-state-day"></i>Дневная</span>
+      <span class="smu-legend-item"><i class="smu-legend-swatch smu-state-night"></i>Ночная</span>
+      <span class="smu-legend-item"><i class="smu-legend-swatch smu-state-extra-day"></i>Доп день</span>
+      <span class="smu-legend-item"><i class="smu-legend-swatch smu-state-extra-night"></i>Доп ночь</span>
+      <span class="smu-legend-item"><i class="smu-legend-swatch smu-state-off"></i>Выходной</span>
     </div>`;
   }
 
   function smuPatternCycleBar(pattern, shiftNumber) {
-    const work = Math.max(0, parseInt(pattern.work_days, 10) || 0);
-    const off = Math.max(0, parseInt(pattern.off_days, 10) || 0);
-    const cycle = work + off;
-    const meta = SmuCalendars.SHIFTS.find(s => s.n === (shiftNumber || 1));
-    const workLabel = meta?.kind === "night" ? "Н" : "Д";
-    if (cycle <= 0) return `<div class="smu-cycle-bar"><span class="smu-cycle-block work">${workLabel}</span></div>`;
-    const blocks = [];
-    for (let i = 0; i < cycle; i++) {
-      blocks.push(`<span class="smu-cycle-block ${i < work ? "work" : "off"}">${i < work ? workLabel : "В"}</span>`);
-    }
-    return `<div class="smu-cycle-bar smu-cycle-bar-${shiftNumber || 1}">${blocks.join("")}<span class="smu-cycle-repeat">↻</span></div>`;
+    void pattern;
+    void shiftNumber;
+    return SmuCalendars.cycleBar222Html();
   }
 
   function smuPreviewBlockHtml(pattern, monthVal, editable) {
     const manual = smuIsManualPattern(pattern);
     const title = editable ? "График" : "Предпросмотр";
-    const hint = manual ? "вручную · 4 смены" : `${pattern.work_days || 2} д · ${pattern.off_days || 2} в · 4 смены`;
+    const hint = manual ? "вручную · 2·2·2" : SmuCalendars.cycleHint(pattern);
     const gridHostId = isSmuDraftPattern(pattern) ? "smuCreateCalGridHost" : "smuCalGridHost";
     const body = editable
       ? `<div class="smu-cal-loading" id="smuCalLoading">Загрузка…</div><div id="${gridHostId}"></div>`
@@ -4501,10 +4648,12 @@
       const r = res.result || {};
       const s3 = r.lesson_reminder_3h || {};
       const s1 = r.lesson_reminder_1d || {};
-      const sent = (s3.employees_sent || 0) + (s1.employees_sent || 0);
+      const sent = (s3.sent || s3.employees_sent || 0) + (s1.sent || s1.employees_sent || 0);
+      const s3n = s3.sent ?? s3.employees_sent ?? 0;
+      const s1n = s1.sent ?? s1.employees_sent ?? 0;
       const lessons = (s3.lessons || 0) + (s1.lessons || 0);
       showToast(
-        `Напоминания: занятий в окне ${lessons}, отправлено ученикам ${sent} (3ч: ${s3.employees_sent || 0}, 1д: ${s1.employees_sent || 0})`,
+        `Напоминания: занятий в окне ${lessons}, отправлено ${sent} (3ч: ${s3n}, 1д: ${s1n})`,
         sent ? "success" : "warning",
       );
     } catch (err) {
@@ -5012,7 +5161,7 @@
       const cards = dayLessons.map(l => {
         const type = l.lesson_type || "practice";
         const tagClass = type === "lecture" ? "yellow" : "green";
-        return `<article class="schedule-lesson-card">
+        return `<article class="schedule-lesson-card" data-open-lesson="${l.id}">
           <div class="schedule-lesson-time">${l.time}${l.timeEnd ? "–" + l.timeEnd : ""}</div>
           <div class="schedule-lesson-body">
             <strong>${escapeHtml(l.title || TYPE_LABELS[type] || "Занятие")}</strong>
@@ -5020,7 +5169,10 @@
             ${l.place ? `<span class="schedule-lesson-meta">${escapeHtml(l.place)}</span>` : ""}
           </div>
           <span class="tag ${tagClass}">${TYPE_LABELS[type] || type}</span>
-          <button type="button" class="btn small danger secondary schedule-lesson-delete" data-delete-lesson="${l.id}" title="Удалить занятие" aria-label="Удалить">${I("trash")}</button>
+          <div class="schedule-lesson-actions">
+            <button type="button" class="btn small secondary schedule-lesson-edit" data-edit-lesson="${l.id}" title="Редактировать" aria-label="Редактировать">${I("pencil")}</button>
+            <button type="button" class="btn small danger secondary schedule-lesson-delete" data-delete-lesson="${l.id}" title="Удалить" aria-label="Удалить">${I("trash")}</button>
+          </div>
         </article>`;
       }).join("");
       return `<section class="schedule-day-group${ds === todayStr ? " is-today" : ""}">
@@ -5029,13 +5181,7 @@
       </section>`;
     }).filter(Boolean).join("");
     host.innerHTML = html || '<div class="empty schedule-empty">В выбранном периоде нет занятий</div>';
-    host.querySelectorAll("[data-delete-lesson]").forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const lesson = lessons.find(item => String(item.id) === String(btn.dataset.deleteLesson));
-        if (lesson) deleteHrLesson(lesson);
-      };
-    });
+    bindHrLessonActions(host, lessons);
   }
 
   function renderHrCalendarBody(rangeLessons) {
@@ -5064,9 +5210,10 @@
       const hourLines = hours.map(h => `<div class="cal-hour-line" style="top:${h.top}px"></div>`).join("");
       const blocksHtml = blocks.map(b => {
         const l = b.lesson;
-        return `<div class="cal-lesson-block mine hr-lesson-block hr-readonly"` +
+        return `<div class="cal-lesson-block mine hr-lesson-block hr-editable" data-open-lesson="${l.id}"` +
           ` style="top:${b.top}px;height:${b.height}px;left:calc(${b.leftPct}% + 2px);width:calc(${b.widthPct}% - 4px)"` +
           ` title="${escapeHtml([l.title, l.track_name, l.teacher_name, l.place].filter(Boolean).join(" · "))}">` +
+          `<button type="button" class="cal-lesson-edit" data-edit-lesson="${l.id}" title="Редактировать">✎</button>` +
           `<button type="button" class="cal-lesson-delete" data-delete-lesson="${l.id}" title="Удалить">×</button>` +
           `<strong>${escapeHtml(l.title)}</strong>` +
           `<span class="cal-block-meta">${l.time}${l.timeEnd ? "–" + l.timeEnd : ""}</span>` +
@@ -5087,13 +5234,7 @@
           ${emptyMsg ? `<div class="cal-empty-overlay">${emptyMsg}</div>` : ""}
         </div>
       </div>`;
-    wrap.querySelectorAll("[data-delete-lesson]").forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const lesson = rangeLessons.find(item => String(item.id) === String(btn.dataset.deleteLesson));
-        if (lesson) deleteHrLesson(lesson);
-      };
-    });
+    bindHrLessonActions(wrap, rangeLessons);
   }
 
   function renderHrSchedule() {
@@ -5610,6 +5751,7 @@
     }).join("") + "<th></th>";
     const body = state.modalRows.map((row, ri) => `<tr>${cfg.fields.map(f => {
       if (f === "status" || f === "direction") return `<td><div data-sel="${ri}-${f}"></div></td>`;
+      if (f === "track") return `<td><div data-sel="${ri}-track"></div></td>`;
       if (f === "id_curator") return `<td><div class="modal-curator-cell" data-cur-combo="${ri}"></div></td>`;
       if (f === "id_max" || f === "phone") return `<td><input type="text" class="cell-input ${f === "id_max" ? "field-max-id" : "field-phone"}" data-row="${ri}" data-field="${f}"></td>`;
       const req = USER_FIELD_META[f]?.required ? ' data-required="1"' : "";
@@ -5617,7 +5759,7 @@
     }).join("")}<td><button type="button" class="btn danger small icon-only" data-remove="${ri}" aria-label="Удалить">${I("x")}</button></td></tr>`).join("");
     const colClass = {
       last_name: "col-last", first_name: "col-first", middle_name: "col-middle",
-      id_max: "col-max", phone: "col-phone", status: "col-status", id_curator: "col-curator",
+      id_max: "col-max", phone: "col-phone", status: "col-status", id_curator: "col-curator", track: "col-track",
     };
     const colgroup = cfg.fields.map(f => `<col class="${colClass[f] || ""}">`).join("") + '<col class="col-actions">';
     $("#previewTable").innerHTML = state.modalRows.length ? `<table class="preview-users-table"><colgroup>${colgroup}</colgroup><thead><tr>${head}</tr></thead><tbody id="previewBody">${body}</tbody></table>` : `<div class="empty">Нет строк</div>`;
@@ -5643,6 +5785,14 @@
               onChange: (v) => { row.phone = v; }
             });
           }
+        } else if (f === "track") {
+          const el = document.querySelector(`[data-sel="${ri}-track"]`);
+          const initial = resolveTrackRef(row.track) || row.track || "";
+          modalFieldCmps.track[ri] = UI.createSelect(el, {
+            options: trackModalOpts(),
+            value: initial,
+            onChange: v => { row.track = v; },
+          });
         } else if (f === "id_curator") {
           const comboEl = document.querySelector(`[data-cur-combo="${ri}"]`);
           modalFieldCmps.curator[ri] = mountCuratorCombo(comboEl, row.id_curator || "", (v) => { row.id_curator = v; });
@@ -5662,7 +5812,7 @@
     const example = {
       last_name: "Иванов", first_name: "Иван", middle_name: "Иванович",
       id_max: "123456789", phone: "+79001234567", status: "активен", id_curator: "",
-      id_curator: ""
+      track: activeTracksList()[0]?.name || "",
     };
     downloadWorkbook([cfg.fields.map(f => fieldLabel(f)), cfg.fields.map(f => example[f] || "")], "template_" + state.modalKey + ".xlsx");
     showToast("Шаблон скачан", "info");
@@ -5687,6 +5837,10 @@
     }
     if (row.phone) row.phone = HrFields.normalizePhone(row.phone) || row.phone;
     if (row.id_max) row.id_max = HrFields.normalizeMaxId(row.id_max);
+    if (row.track) {
+      const resolved = resolveTrackRef(row.track);
+      if (resolved) row.track = resolved;
+    }
     return row;
   }
 
@@ -5697,10 +5851,11 @@
       const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
       const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
       if (aoa.length < 2) return showToast("Файл пуст", "warning");
-      const headers = aoa[0].map(h => String(h).toLowerCase().trim());
+      const headers = aoa[0].map(h => String(h).toLowerCase().trim().replace(/\s*\*$/, ""));
       const map = {
         "фио": "fio", "фамилия": "last_name", "имя": "first_name", "отчество": "middle_name",
         "id max": "id_max", "телефон": "phone", "статус": "status", "id куратора": "id_curator", "куратор": "id_curator",
+        "трек": "track", "track": "track",
         "название группы": "name", "направление": "direction", "название направления": "name", "ученики": "students", "ученики (фио через запятую)": "students"
       };
       const keys = headers.map(h => map[h] || h);
@@ -5727,7 +5882,8 @@
     const err = validateModalRows(rows, cfg);
     if (err) return showToast(err, "warning");
     try {
-      const result = await HrApi.createUsersBulk(rows, cfg.roleCode);
+      const payloadRows = rows.map(r => ({ ...r, track: trackRefForApi(r) }));
+      const result = await HrApi.createUsersBulk(payloadRows, cfg.roleCode);
       await reloadData();
       closeModal();
       if (key === "students") state.pages.students = 1;
@@ -5773,6 +5929,10 @@
   $("#assignTeacherClose").onclick = closeAssignTeacherModal;
   $("#laCancelBtn").onclick = closeAssignTeacherModal;
   $("#laSaveBtn").onclick = saveAssignTeacher;
+  $("#editLessonClose").onclick = closeEditLessonModal;
+  $("#elCancelBtn").onclick = closeEditLessonModal;
+  $("#elSaveBtn").onclick = saveEditLesson;
+  $("#editLessonOverlay").onclick = (e) => { if (e.target === $("#editLessonOverlay")) closeEditLessonModal(); };
   $("#assignTeacherOverlay").onclick = (e) => { if (e.target === $("#assignTeacherOverlay")) closeAssignTeacherModal(); };
   $("#banReasonClose").onclick = () => closeBanReasonModal(true);
   $("#banReasonCancelBtn").onclick = () => closeBanReasonModal(true);

@@ -66,6 +66,7 @@ from domain import (
     list_track_formation_slot_ids,
     run_auto_formation,
     resolve_track_instructor,
+    update_lesson,
     update_track,
     update_smu_extra_shift,
     update_smu_pattern,
@@ -102,6 +103,7 @@ class BulkUserRow(BaseModel):
     max_id: int | None = None
     status: str = "active"
     id_curator: str | None = None
+    track: str | None = None
 
 
 class BulkUsersBody(BaseModel):
@@ -150,6 +152,15 @@ class HrCreateLessonBody(BaseModel):
     max_members: int = Field(default=12, ge=1, le=50)
 
 
+class HrUpdateLessonBody(BaseModel):
+    teacher_id: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    place: str | None = None
+    lesson_type: str | None = Field(default=None, pattern="^(lecture|practice)$")
+    title: str | None = Field(default=None, max_length=255)
+
+
 class SmuPatternBody(BaseModel):
     code: str = Field(min_length=1, max_length=80)
     name: str = Field(min_length=1, max_length=255)
@@ -196,7 +207,8 @@ class SmuExtraShiftUpdateBody(BaseModel):
 class SmuPatternOverrideBody(BaseModel):
     shift_date: date
     shift_number: int = Field(ge=1, le=4)
-    state: str = Field(pattern="^(work|off|extra|auto)$")
+    period: str = Field(default="day", pattern="^(day|night)$")
+    state: str = Field(pattern="^(day|night|extra_day|extra_night|off|auto)$")
     note: str | None = None
 
 
@@ -704,6 +716,7 @@ async def hr_set_smu_pattern_override(
             pattern_id,
             shift_date=body.shift_date,
             shift_number=body.shift_number,
+            period=body.period,
             state=state,
             note=body.note,
         )
@@ -1052,6 +1065,37 @@ async def hr_create_lesson(body: HrCreateLessonBody, user: AuthUser = Depends(re
         if "доступ" in detail.lower():
             raise HTTPException(status_code=403, detail=detail) from error
         raise HTTPException(status_code=400, detail=detail) from error
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.patch("/lessons/{lesson_id}")
+async def hr_update_lesson(
+    lesson_id: str,
+    body: HrUpdateLessonBody,
+    user: AuthUser = Depends(require_hr),
+) -> dict[str, Any]:
+    try:
+        await verify_lesson_hr_access(lesson_id, _hr_scope(user))
+        if body.ends_at is not None and body.starts_at is not None and body.ends_at <= body.starts_at:
+            raise HTTPException(status_code=400, detail="Время окончания должно быть позже начала")
+        lesson = await update_lesson(
+            lesson_id,
+            teacher_id=body.teacher_id,
+            starts_at=body.starts_at,
+            ends_at=body.ends_at,
+            place=body.place,
+            lesson_type=body.lesson_type,
+            title=body.title,
+        )
+        return {"ok": True, "item": lesson}
+    except ValueError as error:
+        detail = str(error)
+        if "доступ" in detail.lower():
+            raise HTTPException(status_code=403, detail=detail) from error
+        raise HTTPException(status_code=404, detail=detail) from error
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 

@@ -616,6 +616,7 @@ td.cell-ui { overflow: visible; position: relative; }
 .preview-users-table col.col-phone { width: 140px; }
 .preview-users-table col.col-status { width: 120px; }
 .preview-users-table col.col-curator { width: 220px; }
+.preview-users-table col.col-track { width: 180px; }
 .preview-users-table col.col-actions { width: 44px; }
 .preview-users-table .modal-curator-cell { min-width: 200px; }
 .preview-users-table .modal-curator-cell .ui-search-select { min-width: 0; width: 100%; }
