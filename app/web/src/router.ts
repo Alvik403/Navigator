@@ -222,29 +222,6 @@ async function renderLoginFrame(errorMessage = ""): Promise<void> {
 
           <p class="error${errorMessage ? " visible" : ""}" id="formError" role="alert">${escapeHtml(errorMessage)}</p>
 
-          <div class="demo-fill" aria-label="Демо-доступ для теста">
-            <p class="demo-fill-title">Демо-доступ для теста</p>
-            <p class="demo-fill-hint">Нажмите карточку — логин и пароль подставятся в форму</p>
-            <div class="demo-account-list">
-              <button type="button" class="demo-account-card demo-account-card--hr demo-fill-btn" data-username="hr.manager" data-password="hr123456">
-                <span class="demo-account-badge">HR</span>
-                <span class="demo-account-body">
-                  <span class="demo-account-name">HR-панель</span>
-                  <span class="demo-account-creds"><kbd>hr.manager</kbd><span class="demo-account-sep">/</span><kbd>hr123456</kbd></span>
-                </span>
-                <span class="demo-account-cta">Заполнить</span>
-              </button>
-              <button type="button" class="demo-account-card demo-account-card--admin demo-fill-btn" data-username="admin" data-password="admin123456">
-                <span class="demo-account-badge">A</span>
-                <span class="demo-account-body">
-                  <span class="demo-account-name">Администратор</span>
-                  <span class="demo-account-creds"><kbd>admin</kbd><span class="demo-account-sep">/</span><kbd>admin123456</kbd></span>
-                </span>
-                <span class="demo-account-cta">Заполнить</span>
-              </button>
-            </div>
-          </div>
-
           <div class="row">
             <label><input type="checkbox" id="rememberMe"> Запомнить меня</label>
             <a href="/max?mode=reset" id="forgotLink">Забыли пароль?</a>
@@ -269,22 +246,6 @@ async function renderLoginFrame(errorMessage = ""): Promise<void> {
   const submitBtn = document.getElementById("passwordLoginBtn") as HTMLButtonElement | null;
   const formError = document.getElementById("formError");
   const statusEl = document.getElementById("loginStatus");
-
-  document.querySelectorAll<HTMLButtonElement>(".demo-fill-btn").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (usernameInput) usernameInput.value = button.dataset.username ?? "";
-      if (passwordInput) passwordInput.value = button.dataset.password ?? "";
-      usernameInput?.classList.remove("invalid");
-      passwordInput?.classList.remove("invalid");
-      formError?.classList.remove("visible");
-      if (formError) formError.textContent = "";
-      document.querySelectorAll(".demo-account-card").forEach((card) => {
-        card.classList.remove("is-selected");
-      });
-      button.classList.add("is-selected");
-      passwordInput?.focus();
-    });
-  });
 
   document.getElementById("maxLoginBtn")?.addEventListener("click", () => {
     navigate("/max", true);

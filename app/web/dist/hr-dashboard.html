@@ -3335,6 +3335,11 @@
       if (new Date(payload.ends_at) <= new Date(starts_at)) {
         return showToast("Время окончания должно быть позже начала", "warning");
       }
+    } else if (lesson.endsAt && lesson.startsAt) {
+      const durationMs = new Date(lesson.endsAt).getTime() - new Date(lesson.startsAt).getTime();
+      if (durationMs > 0) {
+        payload.ends_at = new Date(new Date(starts_at).getTime() + durationMs).toISOString();
+      }
     }
     try {
       await HrApi.updateLesson(lesson.id, payload);

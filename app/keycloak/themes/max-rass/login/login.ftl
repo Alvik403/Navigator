@@ -17,19 +17,13 @@
           <p class="error visible" role="alert">${kcSanitize(messagesPerField.getFirstError('username','password'))?no_esc}</p>
         </#if>
 
-        <div class="dev-hint" role="note">
-          <strong>Тестовые учётные записи</strong>
-          <span>HR: <code>hr.manager</code> / <code>hr123456</code></span>
-          <span>Админ: <code>admin</code> / <code>admin123456</code></span>
-        </div>
-
         <form id="kc-form-login" action="${url.loginAction}" method="post">
           <div class="field">
             <label for="username">Имя пользователя</label>
             <input tabindex="1" id="username" name="username" value="${(login.username!'')}" type="text"
                    autofocus autocomplete="username"
                    aria-invalid="<#if messagesPerField.existsError('username','password')>true</#if>"
-                   placeholder="hr.manager или admin" />
+                   placeholder="ivanov@company.ru" />
           </div>
 
           <div class="field">
